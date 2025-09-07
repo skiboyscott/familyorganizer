@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Organizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .invite-btn, .logout-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .invite-btn {
+            background: #667eea;
+            color: white;
+        }
+
+        .invite-btn:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+
+        .logout-btn {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .logout-btn:hover {
+            background: #ff5252;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 90vh;
+        }
+
+        .auth-box {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 0.5rem;
+            border-radius: 15px;
+            overflow-x: auto;
+        }
+
+        .nav-tab {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .nav-tab.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .nav-tab:not(.active):hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #555;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .list-container {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .list-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .list-item.completed {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+
+        .item-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-small {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            width: auto;
+            min-width: auto;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+        }
+
+        .btn-danger:hover {
+            background: #ff5252;
+        }
+
+        .btn-success {
+            background: #51cf66;
+        }
+
+        .btn-success:hover {
+            background: #40c057;
+        }
+
+        .recipe-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .recipe-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .recipe-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #667eea;
+        }
+
+        .recipe-ingredients {
+            background: #f8f9ff;
+            padding: 1rem;
+            border-radius: 10px;
+            margin: 1rem 0;
+        }
+
+        .calendar-container {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            width: auto;
+            color: #999;
+        }
+
+        .family-members {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+
+        .member-badge {
+            background: #667eea;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .google-cal-connect {
+            background: #4285f4;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            justify-content: center;
+        }
+
+        .google-cal-connect:hover {
+            background: #3367d6;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .nav-tabs {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+            }
+
+            .nav-tabs::-webkit-scrollbar {
+                display: none;
+            }
+
+            .nav-tab {
+                flex-shrink: 0;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .user-info {
+                order: -1;
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .list-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .item-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="auth-section" class="auth-container">
+        <div class="auth-box">
+            <h2 style="text-align: center; margin-bottom: 2rem; color: #667eea;">Welcome to Family Organizer</h2>
+            <div class="form-group">
+                <input type="text" id="familyName" placeholder="Enter your family name (e.g., Smith Family)" style="margin-bottom: 1rem;">
+                <button onclick="createFamily()">Create/Join Family</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app" style="display: none;">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo" id="familyTitle">Family Organizer</div>
+                <div class="user-info">
+                    <div class="family-members" id="familyMembers"></div>
+                    <button class="invite-btn" onclick="showInviteModal()">Invite Family</button>
+                    <button class="logout-btn" onclick="logout()">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="container">
+            <nav class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('grocery')">🛒 Grocery List</button>
+                <button class="nav-tab" onclick="switchTab('recipes')">🍳 Recipes</button>
+                <button class="nav-tab" onclick="switchTab('house-todos')">🏠 House To-Dos</button>
+                <button class="nav-tab" onclick="switchTab('family-todos')">👨‍👩‍👧‍👦 Family To-Dos</button>
+                <button class="nav-tab" onclick="switchTab('calendar')">📅 Calendar</button>
+            </nav>
+
+            <div id="grocery" class="tab-content active">
+                <div class="form-group">
+                    <input type="text" id="groceryItem" placeholder="Add grocery item..." onkeypress="handleEnter(event, addGroceryItem)">
+                    <button onclick="addGroceryItem()" style="margin-top: 0.5rem;">Add Item</button>
+                </div>
+                <div id="groceryList" class="list-container"></div>
+            </div>
+
+            <div id="recipes" class="tab-content">
+                <button onclick="showRecipeModal()" style="margin-bottom: 1rem;">Add New Recipe</button>
+                <div id="recipesList"></div>
+            </div>
+
+            <div id="house-todos" class="tab-content">
+                <div class="form-group">
+                    <input type="text" id="houseTodo" placeholder="Add house task..." onkeypress="handleEnter(event, addHouseTodo)">
+                    <button onclick="addHouseTodo()" style="margin-top: 0.5rem;">Add Task</button>
+                </div>
+                <div id="houseTodosList" class="list-container"></div>
+            </div>
+
+            <div id="family-todos" class="tab-content">
+                <div class="form-group">
+                    <input type="text" id="familyTodo" placeholder="Add family task..." onkeypress="handleEnter(event, addFamilyTodo)">
+                    <button onclick="addFamilyTodo()" style="margin-top: 0.5rem;">Add Task</button>
+                </div>
+                <div id="familyTodosList" class="list-container"></div>
+            </div>
+
+            <div id="calendar" class="tab-content">
+                <div class="calendar-container">
+                    <div class="calendar-header">
+                        <h3>Family Calendar</h3>
+                        <button class="google-cal-connect" onclick="connectGoogleCalendar()">
+                            📅 Connect Google Calendar
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <input type="text" id="eventTitle" placeholder="Event title...">
+                        <input type="datetime-local" id="eventDate" style="margin-top: 0.5rem;">
+                        <button onclick="addCalendarEvent()" style="margin-top: 0.5rem;">Add Event</button>
+                    </div>
+                    <div id="calendarEvents" class="list-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="inviteModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('inviteModal')">&times;</button>
+            <h3>Invite Family Members</h3>
+            <p style="margin: 1rem 0; color: #666;">Share this family code with your family members:</p>
+            <div style="background: #f0f0f0; padding: 1rem; border-radius: 10px; text-align: center; font-family: monospace; font-size: 1.2rem; margin: 1rem 0;" id="familyCode"></div>
+            <button onclick="copyFamilyCode()">Copy Family Code</button>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: #666;">Family members can join by entering this code on the login page.</p>
+        </div>
+    </div>
+
+    <div id="recipeModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('recipeModal')">&times;</button>
+            <h3>Add New Recipe</h3>
+            <form onsubmit="addRecipe(event)">
+                <div class="form-group">
+                    <label for="recipeTitle">Recipe Title:</label>
+                    <input type="text" id="recipeTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="recipeIngredients">Ingredients (one per line):</label>
+                    <textarea id="recipeIngredients" rows="5" placeholder="1 cup flour&#10;2 eggs&#10;1/2 cup milk" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="recipeInstructions">Instructions:</label>
+                    <textarea id="recipeInstructions" rows="5" required></textarea>
+                </div>
+                <button type="submit">Add Recipe</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Data storage
+        let familyData = {
+            name: '',
+            code: '',
+            members: [],
+            grocery: [],
+            recipes: [],
+            houseTodos: [],
+            familyTodos: [],
+            events: []
+        };
+
+        // Load data from localStorage on page load
+        window.onload = function() {
+            loadFamilyData();
+        };
+
+        function loadFamilyData() {
+            const saved = localStorage.getItem('familyOrganizer');
+            if (saved) {
+                familyData = JSON.parse(saved);
+                showMainApp();
+            }
+        }
+
+        function saveFamilyData() {
+            localStorage.setItem('familyOrganizer', JSON.stringify(familyData));
+        }
+
+        function createFamily() {
+            const familyName = document.getElementById('familyName').value.trim();
+            if (!familyName) {
+                alert('Please enter a family name');
+                return;
+            }
+
+            familyData.name = familyName;
+            familyData.code = generateFamilyCode();
+            familyData.members = [familyName.split(' ')[0] || 'Member'];
+            
+            saveFamilyData();
+            showMainApp();
+        }
+
+        function generateFamilyCode() {
+            return Math.random().toString(36).substr(2, 8).toUpperCase();
+        }
+
+        function showMainApp() {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            
+            document.getElementById('familyTitle').textContent = familyData.name;
+            updateFamilyMembers();
+            renderAllData();
+        }
+
+        function updateFamilyMembers() {
+            const container = document.getElementById('familyMembers');
+            container.innerHTML = familyData.members.map(member => 
+                `<span class="member-badge">${member}</span>`
+            ).join('');
+        }
+
+        function renderAllData() {
+            renderGroceryList();
+            renderRecipes();
+            renderHouseTodos();
+            renderFamilyTodos();
+            renderCalendarEvents();
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Utility functions
+        function handleEnter(event, callback) {
+            if (event.key === 'Enter') {
+                callback();
+            }
+        }
+
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Invite functionality
+        function showInviteModal() {
+            document.getElementById('familyCode').textContent = familyData.code;
+            showModal('inviteModal');
+        }
+
+        function copyFamilyCode() {
+            const code = document.getElementById('familyCode').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                alert('Family code copied to clipboard!');
+            });
+        }
+
+        // Grocery List functions
+        function addGroceryItem() {
+            const input = document.getElementById('groceryItem');
+            const item = input.value.trim();
+            if (!item) return;
+
+            familyData.grocery.push({
+                id: Date.now(),
+                text: item,
+                completed: false,
+                addedBy: familyData.members[0]
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderGroceryList();
+        }
+
+        function renderGroceryList() {
+            const container = document.getElementById('groceryList');
+            container.innerHTML = familyData.grocery.map(item => `
+                <div class="list-item ${item.completed ? 'completed' : ''}">
+                    <div>
+                        <strong>${item.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Added by ${item.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-success" onclick="toggleGroceryItem(${item.id})">
+                            ${item.completed ? 'Undo' : 'Done'}
+                        </button>
+                        <button class="btn-small btn-danger" onclick="removeGroceryItem(${item.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleGroceryItem(id) {
+            const item = familyData.grocery.find(item => item.id === id);
+            if (item) {
+                item.completed = !item.completed;
+                saveFamilyData();
+                renderGroceryList();
+            }
+        }
+
+        function removeGroceryItem(id) {
+            familyData.grocery = familyData.grocery.filter(item => item.id !== id);
+            saveFamilyData();
+            renderGroceryList();
+        }
+
+        // Recipe functions
+        function showRecipeModal() {
+            showModal('recipeModal');
+        }
+
+        function addRecipe(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('recipeTitle').value;
+            const ingredients = document.getElementById('recipeIngredients').value;
+            const instructions = document.getElementById('recipeInstructions').value;
+
+            familyData.recipes.push({
+                id: Date.now(),
+                title,
+                ingredients: ingredients.split('\n').filter(i => i.trim()),
+                instructions,
+                addedBy: familyData.members[0]
+            });
+
+            document.getElementById('recipeTitle').value = '';
+            document.getElementById('recipeIngredients').value = '';
+            document.getElementById('recipeInstructions').value = '';
+
+            saveFamilyData();
+            renderRecipes();
+            closeModal('recipeModal');
+        }
+
+        function renderRecipes() {
+            const container = document.getElementById('recipesList');
+            container.innerHTML = familyData.recipes.map(recipe => `
+                <div class="recipe-card">
+                    <div class="recipe-title">${recipe.title}</div>
+                    <div style="font-size: 0.8rem; color: #666; margin-bottom: 1rem;">Added by ${recipe.addedBy}</div>
+                    
+                    <div class="recipe-ingredients">
+                        <strong>Ingredients:</strong>
+                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                            ${recipe.ingredients.map(ing => `<li>${ing}</li>`).join('')}
+                        </ul>
+                    </div>
+                    
+                    <div style="margin: 1rem 0;">
+                        <strong>Instructions:</strong>
+                        <p style="margin-top: 0.5rem; line-height: 1.6;">${recipe.instructions}</p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn-small btn-success" onclick="addIngredientsToGrocery(${recipe.id})">Add to Grocery List</button>
+                        <button class="btn-small btn-danger" onclick="removeRecipe(${recipe.id})">Delete Recipe</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addIngredientsToGrocery(recipeId) {
+            const recipe = familyData.recipes.find(r => r.id === recipeId);
+            if (recipe) {
+                recipe.ingredients.forEach(ingredient => {
+                    familyData.grocery.push({
+                        id: Date.now() + Math.random(),
+                        text: ingredient,
+                        completed: false,
+                        addedBy: `Recipe: ${recipe.title}`
+                    });
+                });
+                saveFamilyData();
+                renderGroceryList();
+                alert(`Added ${recipe.ingredients.length} ingredients to grocery list!`);
+            }
+        }
+
+        function removeRecipe(id) {
+            familyData.recipes = familyData.recipes.filter(recipe => recipe.id !== id);
+            saveFamilyData();
+            renderRecipes();
+        }
+
+        // House todos functions
+        function addHouseTodo() {
+            const input = document.getElementById('houseTodo');
+            const task = input.value.trim();
+            if (!task) return;
+
+            familyData.houseTodos.push({
+                id: Date.now(),
+                text: task,
+                completed: false,
+                addedBy: familyData.members[0]
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderHouseTodos();
+        }
+
+        function renderHouseTodos() {
+            const container = document.getElementById('houseTodosList');
+            container.innerHTML = familyData.houseTodos.map(todo => `
+                <div class="list-item ${todo.completed ? 'completed' : ''}">
+                    <div>
+                        <strong>${todo.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Added by ${todo.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-success" onclick="toggleHouseTodo(${todo.id})">
+                            ${todo.completed ? 'Undo' : 'Done'}
+                        </button>
+                        <button class="btn-small btn-danger" onclick="removeHouseTodo(${todo.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleHouseTodo(id) {
+            const todo = familyData.houseTodos.find(todo => todo.id === id);
+            if (todo) {
+                todo.completed = !todo.completed;
+                saveFamilyData();
+                renderHouseTodos();
+            }
+        }
+
+        function removeHouseTodo(id) {
+            familyData.houseTodos = familyData.houseTodos.filter(todo => todo.id !== id);
+            saveFamilyData();
+            renderHouseTodos();
+        }
+
+        // Family todos functions
+        function addFamilyTodo() {
+            const input = document.getElementById('familyTodo');
+            const task = input.value.trim();
+            if (!task) return;
+
+            familyData.familyTodos.push({
+                id: Date.now(),
+                text: task,
+                completed: false,
+                addedBy: familyData.members[0]
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderFamilyTodos();
+        }
+
+        function renderFamilyTodos() {
+            const container = document.getElementById('familyTodosList');
+            container.innerHTML = familyData.familyTodos.map(todo => `
+                <div class="list-item ${todo.completed ? 'completed' : ''}">
+                    <div>
+                        <strong>${todo.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Added by ${todo.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-success" onclick="toggleFamilyTodo(${todo.id})">
+                            ${todo.completed ? 'Undo' : 'Done'}
+                        </button>
+                        <button class="btn-small btn-danger" onclick="removeFamilyTodo(${todo.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleHouseTodo(id) {
+            const todo = familyData.houseTodos.find(todo => todo.id === id);
+            if (todo) {
+                todo.completed = !todo.completed;
+                if (todo.completed) {
+                    todo.completedBy = familyData.members[0];
+                    todo.completedDate = new Date().toISOString();
+                } else {
+                    delete todo.completedBy;
+                    delete todo.completedDate;
+                }
+                saveFamilyData();
+                renderHouseTodos();
+            }
+        }
+
+        function removeHouseTodo(id) {
+            familyData.houseTodos = familyData.houseTodos.filter(todo => todo.id !== id);
+            saveFamilyData();
+            renderHouseTodos();
+        }
+
+        function clearCompletedHouseTodos() {
+            if (confirm('Are you sure you want to clear all completed house tasks?')) {
+                familyData.houseTodos = familyData.houseTodos.filter(todo => !todo.completed);
+                saveFamilyData();
+                renderHouseTodos();
+            }
+        }
+
+        // Family todos functions
+        function addFamilyTodo() {
+            const input = document.getElementById('familyTodo');
+            const task = input.value.trim();
+            if (!task) return;
+
+            familyData.familyTodos.push({
+                id: Date.now(),
+                text: task,
+                completed: false,
+                addedBy: familyData.members[0]
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderFamilyTodos();
+        }
+
+        function toggleFamilyTodo(id) {
+            const todo = familyData.familyTodos.find(todo => todo.id === id);
+            if (todo) {
+                todo.completed = !todo.completed;
+                if (todo.completed) {
+                    todo.completedBy = familyData.members[0];
+                    todo.completedDate = new Date().toISOString();
+                } else {
+                    delete todo.completedBy;
+                    delete todo.completedDate;
+                }
+                saveFamilyData();
+                renderFamilyTodos();
+            }
+        }
+
+        function removeFamilyTodo(id) {
+            familyData.familyTodos = familyData.familyTodos.filter(todo => todo.id !== id);
+            saveFamilyData();
+            renderFamilyTodos();
+        }
+
+        function clearCompletedFamilyTodos() {
+            if (confirm('Are you sure you want to clear all completed family tasks?')) {
+                familyData.familyTodos = familyData.familyTodos.filter(todo => !todo.completed);
+                saveFamilyData();
+                renderFamilyTodos();
+            }
+        }
+
+        // Calendar functions
+        function addCalendarEvent() {
+            const titleInput = document.getElementById('eventTitle');
+            const dateInput = document.getElementById('eventDate');
+            
+            const title = titleInput.value.trim();
+            const date = dateInput.value;
+            
+            if (!title || !date) {
+                alert('Please enter both title and date');
+                return;
+            }
+
+            familyData.events.push({
+                id: Date.now(),
+                title,
+                date,
+                addedBy: familyData.members[0]
+            });
+
+            titleInput.value = '';
+            dateInput.value = '';
+            
+            saveFamilyData();
+            renderCalendarEvents();
+        }
+
+        function renderCalendarEvents() {
+            const container = document.getElementById('calendarEvents');
+            const sortedEvents = familyData.events.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            container.innerHTML = sortedEvents.map(event => {
+                const eventDate = new Date(event.date);
+                const now = new Date();
+                const isPast = eventDate < now;
+                
+                return `
+                    <div class="list-item ${isPast ? 'completed' : ''}">
+                        <div>
+                            <strong>${event.title}</strong>
+                            <div style="font-size: 0.9rem; color: #666;">
+                                ${eventDate.toLocaleDateString()} at ${eventDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666;">Added by ${event.addedBy}</div>
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn-small btn-danger" onclick="removeCalendarEvent(${event.id})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function removeCalendarEvent(id) {
+            familyData.events = familyData.events.filter(event => event.id !== id);
+            saveFamilyData();
+            renderCalendarEvents();
+        }
+
+        function connectGoogleCalendar() {
+            // This is a placeholder for Google Calendar integration
+            // In a real implementation, you would use Google Calendar API
+            alert('Google Calendar integration would be implemented here using Google Calendar API. This requires:\n\n1. Google Cloud Console project setup\n2. Calendar API credentials\n3. OAuth 2.0 authentication\n\nFor now, you can manually sync events between this calendar and your Google Calendar.');
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout? This will clear all local data.')) {
+                localStorage.removeItem('familyOrganizer');
+                location.reload();
+            }
+        }
+
+        // Auto-save functionality - saves data every 30 seconds
+        setInterval(() => {
+            if (familyData.name) {
+                saveFamilyData();
+            }
+        }, 30000);
+
+        // Service Worker for offline functionality (basic implementation)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('data:text/javascript;base64,' + btoa(`
+                    const CACHE_NAME = 'family-organizer-v1';
+                    const urlsToCache = ['/'];
+                    
+                    self.addEventListener('install', function(event) {
+                        event.waitUntil(
+                            caches.open(CACHE_NAME)
+                                .then(function(cache) {
+                                    return cache.addAll(urlsToCache);
+                                })
+                        );
+                    });
+                    
+                    self.addEventListener('fetch', function(event) {
+                        event.respondWith(
+                            caches.match(event.request)
+                                .then(function(response) {
+                                    if (response) {
+                                        return response;
+                                    }
+                                    return fetch(event.request);
+                                }
+                            )
+                        );
+                    });
+                `)).then(function(registration) {
+                    console.log('ServiceWorker registration successful');
+                }).catch(function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+
+        // Family sharing simulation
+        function simulateFamilySync() {
+            // In a real implementation, this would sync with a backend database
+            // For demo purposes, we're using localStorage
+            const familyCode = familyData.code;
+            const sharedData = localStorage.getItem(`family_shared_${familyCode}`);
+            
+            if (sharedData) {
+                const shared = JSON.parse(sharedData);
+                // Merge data from other family members
+                if (shared.lastUpdate > familyData.lastUpdate) {
+                    familyData = { ...familyData, ...shared };
+                    renderAllData();
+                }
+            }
+            
+            // Save current data as shared
+            familyData.lastUpdate = Date.now();
+            localStorage.setItem(`family_shared_${familyCode}`, JSON.stringify(familyData));
+        }
+
+        // Sync every 10 seconds to simulate real-time collaboration
+        setInterval(simulateFamilySync, 10000);
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            // Ctrl/Cmd + N for new item based on current tab
+            if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+                event.preventDefault();
+                const activeTab = document.querySelector('.tab-content.active');
+                if (activeTab) {
+                    const tabId = activeTab.id;
+                    switch(tabId) {
+                        case 'grocery':
+                            document.getElementById('groceryItem').focus();
+                            break;
+                        case 'recipes':
+                            showRecipeModal();
+                            break;
+                        case 'house-todos':
+                            document.getElementById('houseTodo').focus();
+                            break;
+                        case 'family-todos':
+                            document.getElementById('familyTodo').focus();
+                            break;
+                        case 'calendar':
+                            document.getElementById('eventTitle').focus();
+                            break;
+                    }
+                }
+            }
+        });
+
+        // Export data functionality
+        function exportFamilyData() {
+            const dataStr = JSON.stringify(familyData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${familyData.name.replace(/\s+/g, '_')}_data.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Import data functionality
+        function importFamilyData(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (confirm('This will replace all current data. Are you sure?')) {
+                            familyData = importedData;
+                            saveFamilyData();
+                            renderAllData();
+                            updateFamilyMembers();
+                            alert('Data imported successfully!');
+                        }
+                    } catch (error) {
+                        alert('Error importing data. Please check the file format.');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // Add export/import buttons to the interface
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add data management section to settings (could be expanded)
+            const settingsHTML = `
+                <div style="margin-top: 2rem; padding: 1rem; background: rgba(255,255,255,0.1); border-radius: 10px;">
+                    <h4>Data Management</h4>
+                    <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
+                        <button onclick="exportFamilyData()" class="btn-small">Export Data</button>
+                        <label class="btn-small" style="cursor: pointer; background: #51cf66;">
+                            Import Data
+                            <input type="file" accept=".json" onchange="importFamilyData(event)" style="display: none;">
+                        </label>
+                    </div>
+                </div>
+            `;
+            
+            // You can add this to any tab or create a settings tab
+        });
+
+        // PWA installation prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Show install button
+            const installBtn = document.createElement('button');
+            installBtn.textContent = '📱 Install App';
+            installBtn.className = 'invite-btn';
+            installBtn.onclick = () => {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    }
+                    deferredPrompt = null;
+                    installBtn.remove();
+                });
+            };
+            
+            document.querySelector('.user-info').appendChild(installBtn);
+        });
+
+        // Add manifest for PWA
+        const manifest = {
+            name: "Family Organizer",
+            short_name: "FamilyOrg",
+            description: "A collaborative family organization app",
+            start_url: "/",
+            display: "standalone",
+            background_color: "#667eea",
+            theme_color: "#667eea",
+            icons: [
+                {
+                    src: "data:image/svg+xml;base64," + btoa(`
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                            <rect width="512" height="512" fill="#667eea"/>
+                            <text x="256" y="300" font-family="Arial" font-size="300" fill="white" text-anchor="middle">👨‍👩‍👧‍👦</text>
+                        </svg>
+                    `),
+                    sizes: "512x512",
+                    type: "image/svg+xml"
+                }
+            ]
+        };
+        
+        const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+        const manifestURL = URL.createObjectURL(manifestBlob);
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = manifestURL;
+        document.head.appendChild(link);
+    </script>
+</body>
+</html>
