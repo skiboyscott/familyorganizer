@@ -1,4 +1,1205 @@
-<!DOCTYPE html>
+<div style="background: #f0f0f0; padding: 1rem; border-radius: 10px; text-align: center; font-family: monospace; font-size: 1.2rem; margin: 1rem 0;" id="familyCode"></div>
+            <button onclick="copyFamilyCode()">Copy Family Code</button>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: #666;">Family members can join by entering this code on the login page.</p>
+        </div>
+    </div>
+
+    <div id="recipeModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('recipeModal')">&times;</button>
+            <h3>Add New Recipe</h3>
+            <form onsubmit="addRecipe(event)">
+                <div class="form-group">
+                    <label for="recipeUrl">Recipe URL (optional):</label>
+                    <input type="url" id="recipeUrl" placeholder="https://example.com/recipe">
+                    <button type="button" onclick="scrapeRecipe()" style="margin-top: 0.5rem; background: #51cf66;">Auto-Fill from URL</button>
+                </div>
+                <div class="form-group">
+                    <label for="recipeTitle">Recipe Title:</label>
+                    <input type="text" id="recipeTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="recipeIngredients">Ingredients (one per line):</label>
+                    <textarea id="recipeIngredients" rows="5" placeholder="1 cup flour&#10;2 eggs&#10;1/2 cup milk" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="recipeInstructions">Instructions:</label>
+                    <textarea id="recipeInstructions" rows="5" required></textarea>
+                </div>
+                <div id="scrapeLoading" style="display: none; text-align: center; color: #4682B4; margin: 1rem 0;">
+                    🔄 Scraping recipe data...
+                </div>
+                <button type="submit">Add Recipe</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Day Event Modal -->
+    <div id="dayEventModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('dayEventModal')">&times;</button>
+            <h3 id="dayEventModalTitle">Add Event for January 15, 2025</h3>
+            <form onsubmit="addDayEvent(event)">
+                <div class="form-group">
+                    <label for="dayEventTitle">Event Title:</label>
+                    <input type="text" id="dayEventTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="dayEventTime">Time (optional):</label>
+                    <input type="time" id="dayEventTime">
+                </div>
+                <div class="form-group">
+                    <label for="dayEventDescription">Description (optional):</label>
+                    <textarea id="dayEventDescription" rows="3"></textarea>
+                </div>
+                <input type="hidden" id="selectedDate">
+                <button type="submit">Add Event</button>
+            </form>
+            
+            <div id="dayEvents" style="margin-top: 2rem;">
+                <h4>Events for this day:</h4>
+                <div id="dayEventsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Authentication and user management
+        let currentUser = null;
+        let authToken = null;
+
+        // Data storage with user context
+        let familyData = {
+            name: '',
+            code: '',
+            members: [],
+            grocery: [],
+            recipes: [],
+            houseTodos: [],
+            familyTodos: [],
+            events: []
+        };
+
+        // Load data from localStorage on page load
+        window.onload = function() {
+            checkAuthStatus();
+        };
+
+        function checkAuthStatus() {
+            const savedAuth = localStorage.getItem('familyOrgAuth');
+            const savedUser = localStorage.getItem('familyOrgUser');
+            
+            if (savedAuth && savedUser) {
+                try {
+                    currentUser = JSON.parse(savedUser);
+                    authToken = savedAuth;
+                    loadUserData();
+                    showMainApp();
+                } catch (error) {
+                    console.error('Error loading saved user:', error);
+                    showAuthSection();
+                }
+            } else {
+                showAuthSection();
+            }
+        }
+
+        function showAuthSection() {
+            document.getElementById('auth-section').style.display = 'flex';
+            document.getElementById('main-app').style.display = 'none';
+        }
+
+        // Authentication method switching
+        function showAuthMethod(method) {
+            document.querySelectorAll('.auth-method-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${method}AuthBtn`).classList.add('active');
+            
+            document.querySelectorAll('.auth-method').forEach(el => el.classList.remove('active'));
+            document.getElementById(`${method}Auth`).classList.add('active');
+        }
+
+        function switchAuthTab(tab) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`${tab}Tab`).classList.add('active');
+            
+            document.querySelectorAll('.auth-form').forEach(form => form.classList.remove('active'));
+            document.getElementById(`${tab}Form`).classList.add('active');
+        }
+
+        // Login functionality
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            showAuthLoading('loginForm', 'Logging in...');
+            
+            try {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                const mockUser = await authenticateUser(email, password);
+                
+                if (mockUser) {
+                    currentUser = mockUser;
+                    authToken = generateToken();
+                    
+                    localStorage.setItem('familyOrgAuth', authToken);
+                    localStorage.setItem('familyOrgUser', JSON.stringify(currentUser));
+                    
+                    await loadUserData();
+                    showAuthSuccess('Login successful!');
+                    setTimeout(() => showMainApp(), 1000);
+                } else {
+                    throw new Error('Invalid email or password');
+                }
+            } catch (error) {
+                showAuthError(error.message);
+            } finally {
+                hideAuthLoading('loginForm', 'Login');
+            }
+        }
+
+        // Registration functionality
+        async function handleRegister(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('registerName').value;
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const familyName = document.getElementById('familyNameRegister').value;
+            
+            if (password !== confirmPassword) {
+                showAuthError('Passwords do not match');
+                return;
+            }
+            
+            showAuthLoading('registerForm', 'Creating account...');
+            
+            try {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const newUser = await registerUser(name, email, password, familyName);
+                
+                currentUser = newUser;
+                authToken = generateToken();
+                
+                localStorage.setItem('familyOrgAuth', authToken);
+                localStorage.setItem('familyOrgUser', JSON.stringify(currentUser));
+                
+                if (familyName) {
+                    await createOrJoinFamily(familyName);
+                }
+                
+                showAuthSuccess('Account created successfully!');
+                setTimeout(() => showMainApp(), 1000);
+            } catch (error) {
+                showAuthError(error.message);
+            } finally {
+                hideAuthLoading('registerForm', 'Create Account');
+            }
+        }
+
+        // Google Authentication
+        async function handleGoogleAuth() {
+            showAuthLoading('googleAuth', 'Connecting to Google...');
+            
+            try {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const googleUser = {
+                    id: 'google_' + Date.now(),
+                    name: 'Google User',
+                    email: 'user@gmail.com',
+                    provider: 'google',
+                    familyId: null
+                };
+                
+                currentUser = googleUser;
+                authToken = generateToken();
+                
+                localStorage.setItem('familyOrgAuth', authToken);
+                localStorage.setItem('familyOrgUser', JSON.stringify(currentUser));
+                
+                await loadUserData();
+                showAuthSuccess('Google login successful!');
+                setTimeout(() => showMainApp(), 1000);
+            } catch (error) {
+                showAuthError('Google authentication failed');
+            } finally {
+                hideAuthLoading('googleAuth', 'Continue with Google');
+            }
+        }
+
+        // Guest Authentication
+        function handleGuestAuth() {
+            const name = document.getElementById('guestName').value.trim();
+            const familyName = document.getElementById('guestFamilyName').value.trim();
+            
+            if (!name) {
+                showAuthError('Please enter your name');
+                return;
+            }
+            
+            currentUser = {
+                id: 'guest_' + Date.now(),
+                name: name,
+                email: 'guest@local',
+                provider: 'guest',
+                familyId: null
+            };
+            
+            authToken = 'guest_token';
+            
+            if (familyName) {
+                familyData.name = familyName;
+                familyData.code = generateFamilyCode();
+                familyData.members = [name];
+                currentUser.familyId = familyData.code;
+            }
+            
+            showMainApp();
+        }
+
+        // Join family functionality
+        async function joinFamily() {
+            const code = document.getElementById('joinFamilyCode').value.trim().toUpperCase();
+            
+            if (!code) {
+                showAuthError('Please enter a family code');
+                return;
+            }
+            
+            try {
+                const family = await findFamilyByCode(code);
+                
+                if (family) {
+                    showAuthSuccess(`Joining ${family.name}...`);
+                    setTimeout(() => {
+                        if (currentUser && currentUser.provider !== 'guest') {
+                            showMainApp();
+                        } else {
+                            showAuthError('Please login first to join a family');
+                        }
+                    }, 1000);
+                } else {
+                    showAuthError('Invalid family code');
+                }
+            } catch (error) {
+                showAuthError('Failed to join family');
+            }
+        }
+
+        // Mock authentication functions
+        async function authenticateUser(email, password) {
+            const mockUsers = [
+                { id: 1, name: 'John Doe', email: 'john@example.com', password: 'password123', familyId: 'FAMILY123' },
+                { id: 2, name: 'Jane Smith', email: 'jane@example.com', password: 'password123', familyId: 'FAMILY456' }
+            ];
+            
+            const user = mockUsers.find(u => u.email === email && u.password === password);
+            if (user) {
+                const { password: _, ...userWithoutPassword } = user;
+                return { ...userWithoutPassword, provider: 'email' };
+            }
+            return null;
+        }
+
+        async function registerUser(name, email, password, familyName) {
+            return {
+                id: Date.now(),
+                name: name,
+                email: email,
+                provider: 'email',
+                familyId: familyName ? generateFamilyCode() : null
+            };
+        }
+
+        async function findFamilyByCode(code) {
+            const mockFamilies = {
+                'FAMILY123': { name: 'Doe Family', code: 'FAMILY123' },
+                'FAMILY456': { name: 'Smith Family', code: 'FAMILY456' }
+            };
+            
+            return mockFamilies[code] || null;
+        }
+
+        function generateToken() {
+            return 'token_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        }
+
+        function generateFamilyCode() {
+            return Math.random().toString(36).substr(2, 8).toUpperCase();
+        }
+
+        // UI helper functions
+        function showAuthLoading(formId, message) {
+            const form = document.getElementById(formId);
+            const button = form.querySelector('button[type="submit"]') || form.querySelector('button');
+            if (button) {
+                button.innerHTML = `<span class="loading-spinner"></span>${message}`;
+                button.disabled = true;
+            }
+        }
+
+        function hideAuthLoading(formId, originalText) {
+            const form = document.getElementById(formId);
+            const button = form.querySelector('button[type="submit"]') || form.querySelector('button');
+            if (button) {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        function showAuthError(message) {
+            clearAuthMessages();
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'auth-error';
+            errorDiv.textContent = message;
+            
+            const activeMethod = document.querySelector('.auth-method.active');
+            if (activeMethod) {
+                activeMethod.insertBefore(errorDiv, activeMethod.firstChild);
+                setTimeout(() => errorDiv.remove(), 5000);
+            }
+        }
+
+        function showAuthSuccess(message) {
+            clearAuthMessages();
+            const successDiv = document.createElement('div');
+            successDiv.className = 'auth-success';
+            successDiv.textContent = message;
+            
+            const activeMethod = document.querySelector('.auth-method.active');
+            if (activeMethod) {
+                activeMethod.insertBefore(successDiv, activeMethod.firstChild);
+                setTimeout(() => successDiv.remove(), 5000);
+            }
+        }
+
+        function clearAuthMessages() {
+            document.querySelectorAll('.auth-error, .auth-success').forEach(el => el.remove());
+        }
+
+        function showForgotPassword() {
+            alert('Password reset functionality would be implemented here with your backend API.');
+        }
+
+        // User data management
+        async function loadUserData() {
+            if (currentUser && currentUser.familyId) {
+                const savedData = localStorage.getItem(`familyData_${currentUser.familyId}`);
+                if (savedData) {
+                    try {
+                        familyData = JSON.parse(savedData);
+                    } catch (error) {
+                        console.error('Error loading family data:', error);
+                    }
+                } else {
+                    familyData = {
+                        name: currentUser.familyId,
+                        code: currentUser.familyId,
+                        members: [currentUser.name],
+                        grocery: [],
+                        recipes: [],
+                        houseTodos: [],
+                        familyTodos: [],
+                        events: []
+                    };
+                }
+            } else {
+                const saved = localStorage.getItem('familyOrganizer');
+                if (saved) {
+                    try {
+                        familyData = JSON.parse(saved);
+                    } catch (error) {
+                        console.error('Error loading data:', error);
+                    }
+                }
+            }
+        }
+
+        function saveFamilyData() {
+            try {
+                if (currentUser && currentUser.familyId) {
+                    localStorage.setItem(`familyData_${currentUser.familyId}`, JSON.stringify(familyData));
+                } else {
+                    localStorage.setItem('familyOrganizer', JSON.stringify(familyData));
+                }
+            } catch (error) {
+                console.error('Error saving data:', error);
+            }
+        }
+
+        async function createOrJoinFamily(familyName) {
+            familyData.name = familyName;
+            familyData.code = generateFamilyCode();
+            familyData.members = [currentUser.name];
+            currentUser.familyId = familyData.code;
+            
+            saveFamilyData();
+            localStorage.setItem('familyOrgUser', JSON.stringify(currentUser));
+        }
+
+        function showMainApp() {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            
+            if (familyData.name) {
+                document.getElementById('familyTitle').textContent = familyData.name;
+            } else {
+                document.getElementById('familyTitle').textContent = 'Family Organizer';
+            }
+            
+            updateUserProfile();
+            updateFamilyMembers();
+            renderAllData();
+        }
+
+        function updateUserProfile() {
+            if (currentUser) {
+                const avatar = document.getElementById('userAvatar');
+                const name = document.getElementById('userName');
+                const email = document.getElementById('userEmail');
+                
+                if (avatar) avatar.textContent = currentUser.name.charAt(0).toUpperCase();
+                if (name) name.textContent = currentUser.name;
+                if (email) email.textContent = currentUser.email;
+            }
+        }
+
+        function updateFamilyMembers() {
+            const container = document.getElementById('familyMembers');
+            if (container && familyData.members) {
+                container.innerHTML = familyData.members.map(member => 
+                    `<span class="member-badge">${member}</span>`
+                ).join('');
+            }
+        }
+
+        function renderAllData() {
+            renderGroceryList();
+            renderRecipes();
+            renderHouseTodos();
+            renderFamilyTodos();
+            renderCalendar();
+            renderUpcomingEvents();
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Utility functions
+        function handleEnter(event, callback) {
+            if (event.key === 'Enter') {
+                callback();
+            }
+        }
+
+        function showModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.classList.remove('active');
+        }
+
+        // Invite functionality
+        function showInviteModal() {
+            if (familyData.code) {
+                const codeElement = document.getElementById('familyCode');
+                if (codeElement) codeElement.textContent = familyData.code;
+                showModal('inviteModal');
+            } else {
+                alert('Please create or join a family first');
+            }
+        }
+
+        function copyFamilyCode() {
+            const code = document.getElementById('familyCode');
+            if (code && navigator.clipboard) {
+                navigator.clipboard.writeText(code.textContent).then(() => {
+                    alert('Family code copied to clipboard!');
+                });
+            }
+        }
+
+        // Grocery List functions
+        function addGroceryItem() {
+            const input = document.getElementById('groceryItem');
+            const item = input.value.trim();
+            if (!item) return;
+
+            familyData.grocery.push({
+                id: Date.now(),
+                text: item,
+                completed: false,
+                addedBy: currentUser ? currentUser.name : 'Unknown'
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderGroceryList();
+        }
+
+        function renderGroceryList() {
+            const container = document.getElementById('groceryList');
+            if (!container) return;
+            
+            container.innerHTML = familyData.grocery.map(item => `
+                <div class="list-item ${item.completed ? 'completed' : ''}">
+                    <div>
+                        <strong>${item.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Added by ${item.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-success" onclick="toggleGroceryItem(${item.id})">
+                            ${item.completed ? 'Undo' : 'Done'}
+                        </button>
+                        <button class="btn-small btn-danger" onclick="removeGroceryItem(${item.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleGroceryItem(id) {
+            const item = familyData.grocery.find(item => item.id === id);
+            if (item) {
+                item.completed = !item.completed;
+                saveFamilyData();
+                renderGroceryList();
+            }
+        }
+
+        function removeGroceryItem(id) {
+            familyData.grocery = familyData.grocery.filter(item => item.id !== id);
+            saveFamilyData();
+            renderGroceryList();
+        }
+
+        // Recipe functions
+        function showRecipeModal() {
+            showModal('recipeModal');
+        }
+
+        function addRecipe(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('recipeTitle').value;
+            const ingredients = document.getElementById('recipeIngredients').value;
+            const instructions = document.getElementById('recipeInstructions').value;
+            const url = document.getElementById('recipeUrl').value;
+
+            familyData.recipes.push({
+                id: Date.now(),
+                title,
+                ingredients: ingredients.split('\n').filter(i => i.trim()),
+                instructions,
+                url: url || null,
+                addedBy: currentUser ? currentUser.name : 'Unknown'
+            });
+
+            document.getElementById('recipeTitle').value = '';
+            document.getElementById('recipeIngredients').value = '';
+            document.getElementById('recipeInstructions').value = '';
+            document.getElementById('recipeUrl').value = '';
+
+            saveFamilyData();
+            renderRecipes();
+            closeModal('recipeModal');
+        }
+
+        async function scrapeRecipe() {
+            const urlInput = document.getElementById('recipeUrl');
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                alert('Please enter a recipe URL first');
+                return;
+            }
+
+            const loadingDiv = document.getElementById('scrapeLoading');
+            loadingDiv.style.display = 'block';
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const mockRecipeData = await simulateRecipeScraping(url);
+                
+                if (mockRecipeData) {
+                    document.getElementById('recipeTitle').value = mockRecipeData.title;
+                    document.getElementById('recipeIngredients').value = mockRecipeData.ingredients.join('\n');
+                    document.getElementById('recipeInstructions').value = mockRecipeData.instructions;
+                    
+                    alert('Recipe data auto-filled! Please review and edit as needed.');
+                } else {
+                    alert('Could not extract recipe data from this URL. Please enter the details manually.');
+                }
+                
+            } catch (error) {
+                console.error('Error scraping recipe:', error);
+                alert('Error scraping recipe. Please enter the details manually.');
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        async function simulateRecipeScraping(url) {
+            const mockRecipes = {
+                'allrecipes.com': {
+                    title: 'Classic Chocolate Chip Cookies',
+                    ingredients: [
+                        '2 1/4 cups all-purpose flour',
+                        '1 tsp baking soda',
+                        '1 tsp salt',
+                        '1 cup butter, softened',
+                        '3/4 cup granulated sugar',
+                        '3/4 cup brown sugar',
+                        '2 large eggs',
+                        '2 tsp vanilla extract',
+                        '2 cups chocolate chips'
+                    ],
+                    instructions: 'Preheat oven to 375°F. Mix dry ingredients in a bowl. Cream butter and sugars, add eggs and vanilla. Combine wet and dry ingredients, fold in chocolate chips. Drop spoonfuls on baking sheet and bake 9-11 minutes until golden brown.'
+                }
+            };
+
+            for (const [domain, recipe] of Object.entries(mockRecipes)) {
+                if (url.includes(domain)) {
+                    return recipe;
+                }
+            }
+
+            if (url.includes('recipe') || url.includes('cooking') || url.includes('food')) {
+                return {
+                    title: 'Extracted Recipe Title',
+                    ingredients: ['Ingredient 1', 'Ingredient 2', 'Ingredient 3'],
+                    instructions: 'Recipe instructions would be extracted here.'
+                };
+            }
+
+            return null;
+        }
+
+        function renderRecipes() {
+            const container = document.getElementById('recipesList');
+            if (!container) return;
+            
+            container.innerHTML = familyData.recipes.map(recipe => `
+                <div class="recipe-card">
+                    <div class="recipe-title">${recipe.title}</div>
+                    <div style="font-size: 0.8rem; color: #666; margin-bottom: 1rem;">
+                        Added by ${recipe.addedBy}
+                        ${recipe.url ? `<br><a href="${recipe.url}" target="_blank" style="color: #4682B4; text-decoration: none;">🔗 View Original Recipe</a>` : ''}
+                    </div>
+                    
+                    <div class="recipe-ingredients">
+                        <strong>Ingredients:</strong>
+                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                            ${recipe.ingredients.map(ing => `<li>${ing}</li>`).join('')}
+                        </ul>
+                    </div>
+                    
+                    <div style="margin: 1rem 0;">
+                        <strong>Instructions:</strong>
+                        <p style="margin-top: 0.5rem; line-height: 1.6;">${recipe.instructions}</p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn-small btn-success" onclick="addIngredientsToGrocery(${recipe.id})">Add to Grocery List</button>
+                        <button class="btn-small btn-danger" onclick="removeRecipe(${recipe.id})">Delete Recipe</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addIngredientsToGrocery(recipeId) {
+            const recipe = familyData.recipes.find(r => r.id === recipeId);
+            if (recipe) {
+                recipe.ingredients.forEach(ingredient => {
+                    familyData.grocery.push({
+                        id: Date.now() + Math.random(),
+                        text: ingredient,
+                        completed: false,
+                        addedBy: `Recipe: ${recipe.title}`
+                    });
+                });
+                saveFamilyData();
+                renderGroceryList();
+                alert(`Added ${recipe.ingredients.length} ingredients to grocery list!`);
+            }
+        }
+
+        function removeRecipe(id) {
+            familyData.recipes = familyData.recipes.filter(recipe => recipe.id !== id);
+            saveFamilyData();
+            renderRecipes();
+        }
+
+        // House todos functions
+        function addHouseTodo() {
+            const input = document.getElementById('houseTodo');
+            const task = input.value.trim();
+            if (!task) return;
+
+            familyData.houseTodos.push({
+                id: Date.now(),
+                text: task,
+                completed: false,
+                addedBy: currentUser ? currentUser.name : 'Unknown'
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderHouseTodos();
+        }
+
+        function renderHouseTodos() {
+            const pendingContainer = document.getElementById('houseTodosList');
+            const completedContainer = document.getElementById('houseTodosCompleted');
+            
+            if (!pendingContainer || !completedContainer) return;
+            
+            const pendingTodos = familyData.houseTodos.filter(todo => !todo.completed);
+            const completedTodos = familyData.houseTodos.filter(todo => todo.completed);
+            
+            pendingContainer.innerHTML = pendingTodos.map(todo => `
+                <div class="list-item">
+                    <div>
+                        <strong>${todo.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Added by ${todo.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-success" onclick="toggleHouseTodo(${todo.id})">Complete</button>
+                        <button class="btn-small btn-danger" onclick="removeHouseTodo(${todo.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            completedContainer.innerHTML = completedTodos.map(todo => `
+                <div class="list-item completed">
+                    <div>
+                        <strong>${todo.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Completed by ${todo.completedBy || todo.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small" onclick="toggleHouseTodo(${todo.id})" style="background: #ffd43b;">Undo</button>
+                        <button class="btn-small btn-danger" onclick="removeHouseTodo(${todo.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleHouseTodo(id) {
+            const todo = familyData.houseTodos.find(todo => todo.id === id);
+            if (todo) {
+                todo.completed = !todo.completed;
+                if (todo.completed) {
+                    todo.completedBy = currentUser ? currentUser.name : 'Unknown';
+                } else {
+                    delete todo.completedBy;
+                }
+                saveFamilyData();
+                renderHouseTodos();
+            }
+        }
+
+        function removeHouseTodo(id) {
+            familyData.houseTodos = familyData.houseTodos.filter(todo => todo.id !== id);
+            saveFamilyData();
+            renderHouseTodos();
+        }
+
+        function clearCompletedHouseTodos() {
+            if (confirm('Are you sure you want to clear all completed house tasks?')) {
+                familyData.houseTodos = familyData.houseTodos.filter(todo => !todo.completed);
+                saveFamilyData();
+                renderHouseTodos();
+            }
+        }
+
+        // Family todos functions
+        function addFamilyTodo() {
+            const input = document.getElementById('familyTodo');
+            const task = input.value.trim();
+            if (!task) return;
+
+            familyData.familyTodos.push({
+                id: Date.now(),
+                text: task,
+                completed: false,
+                addedBy: currentUser ? currentUser.name : 'Unknown'
+            });
+
+            input.value = '';
+            saveFamilyData();
+            renderFamilyTodos();
+        }
+
+        function renderFamilyTodos() {
+            const pendingContainer = document.getElementById('familyTodosList');
+            const completedContainer = document.getElementById('familyTodosCompleted');
+            
+            if (!pendingContainer || !completedContainer) return;
+            
+            const pendingTodos = familyData.familyTodos.filter(todo => !todo.completed);
+            const completedTodos = familyData.familyTodos.filter(todo => todo.completed);
+            
+            pendingContainer.innerHTML = pendingTodos.map(todo => `
+                <div class="list-item">
+                    <div>
+                        <strong>${todo.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Added by ${todo.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small btn-success" onclick="toggleFamilyTodo(${todo.id})">Complete</button>
+                        <button class="btn-small btn-danger" onclick="removeFamilyTodo(${todo.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            completedContainer.innerHTML = completedTodos.map(todo => `
+                <div class="list-item completed">
+                    <div>
+                        <strong>${todo.text}</strong>
+                        <div style="font-size: 0.8rem; color: #666;">Completed by ${todo.completedBy || todo.addedBy}</div>
+                    </div>
+                    <div class="item-actions">
+                        <button class="btn-small" onclick="toggleFamilyTodo(${todo.id})" style="background: #ffd43b;">Undo</button>
+                        <button class="btn-small btn-danger" onclick="removeFamilyTodo(${todo.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleFamilyTodo(id) {
+            const todo = familyData.familyTodos.find(todo => todo.id === id);
+            if (todo) {
+                todo.completed = !todo.completed;
+                if (todo.completed) {
+                    todo.completedBy = currentUser ? currentUser.name : 'Unknown';
+                } else {
+                    delete todo.completedBy;
+                }
+                saveFamilyData();
+                renderFamilyTodos();
+            }
+        }
+
+        function removeFamilyTodo(id) {
+            familyData.familyTodos = familyData.familyTodos.filter(todo => todo.id !== id);
+            saveFamilyData();
+            renderFamilyTodos();
+        }
+
+        function clearCompletedFamilyTodos() {
+            if (confirm('Are you sure you want to clear all completed family tasks?')) {
+                familyData.familyTodos = familyData.familyTodos.filter(todo => !todo.completed);
+                saveFamilyData();
+                renderFamilyTodos();
+            }
+        }
+
+        // Calendar functionality
+        let currentDate = new Date();
+        let selectedDateForEvent = null;
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const monthYear = document.getElementById('currentMonthYear');
+            
+            if (!grid || !monthYear) return;
+            
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            
+            monthYear.textContent = new Date(year, month).toLocaleDateString('en-US', { 
+                month: 'long', 
+                year: 'numeric' 
+            });
+            
+            grid.innerHTML = '';
+            
+            const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            dayHeaders.forEach(day => {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-header-day';
+                dayElement.textContent = day;
+                grid.appendChild(dayElement);
+            });
+            
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const startingDayOfWeek = firstDay.getDay();
+            
+            const today = new Date();
+            const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+            const todayDate = today.getDate();
+            
+            for (let i = 0; i < startingDayOfWeek; i++) {
+                const prevMonthDay = new Date(year, month, -(startingDayOfWeek - 1 - i));
+                const dayElement = createCalendarDay(prevMonthDay, true);
+                grid.appendChild(dayElement);
+            }
+            
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const isToday = isCurrentMonth && day === todayDate;
+                const dayElement = createCalendarDay(date, false, isToday);
+                grid.appendChild(dayElement);
+            }
+            
+            const totalCells = grid.children.length - 7;
+            const remainingCells = 42 - totalCells;
+            for (let day = 1; day <= remainingCells; day++) {
+                const nextMonthDay = new Date(year, month + 1, day);
+                const dayElement = createCalendarDay(nextMonthDay, true);
+                grid.appendChild(dayElement);
+            }
+        }
+
+        function createCalendarDay(date, isOtherMonth = false, isToday = false) {
+            const dayElement = document.createElement('div');
+            dayElement.className = 'calendar-day';
+            
+            if (isOtherMonth) dayElement.classList.add('other-month');
+            if (isToday) dayElement.classList.add('today');
+            
+            const dateStr = date.toISOString().split('T')[0];
+            const dayEvents = familyData.events.filter(event => {
+                const eventDate = new Date(event.date).toISOString().split('T')[0];
+                return eventDate === dateStr;
+            });
+            
+            if (dayEvents.length > 0) {
+                dayElement.classList.add('has-events');
+            }
+            
+            dayElement.innerHTML = `
+                <div class="calendar-day-number">${date.getDate()}</div>
+                <div class="calendar-events">
+                    ${dayEvents.slice(0, 2).map(event => `
+                        <div style="font-size: 0.6rem; margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <span class="calendar-event-dot"></span>${event.title}
+                        </div>
+                    `).join('')}
+                    ${dayEvents.length > 2 ? `<div style="font-size: 0.6rem; color: #2E8B57;">+${dayEvents.length - 2} more</div>` : ''}
+                </div>
+            `;
+            
+            dayElement.onclick = () => openDayModal(date);
+            
+            return dayElement;
+        }
+
+        function openDayModal(date) {
+            selectedDateForEvent = date;
+            const dateStr = date.toLocaleDateString('en-US', { 
+                weekday: 'long',
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            const modalTitle = document.getElementById('dayEventModalTitle');
+            const selectedDateInput = document.getElementById('selectedDate');
+            
+            if (modalTitle) modalTitle.textContent = `Events for ${dateStr}`;
+            if (selectedDateInput) selectedDateInput.value = date.toISOString().split('T')[0];
+            
+            document.getElementById('dayEventTitle').value = '';
+            document.getElementById('dayEventTime').value = '';
+            document.getElementById('dayEventDescription').value = '';
+            
+            renderDayEvents(date);
+            showModal('dayEventModal');
+        }
+
+        function renderDayEvents(date) {
+            const dateStr = date.toISOString().split('T')[0];
+            const dayEvents = familyData.events.filter(event => {
+                const eventDate = new Date(event.date).toISOString().split('T')[0];
+                return eventDate === dateStr;
+            });
+            
+            const container = document.getElementById('dayEventsList');
+            if (!container) return;
+            
+            if (dayEvents.length === 0) {
+                container.innerHTML = '<p style="color: #666; font-style: italic;">No events for this day</p>';
+                return;
+            }
+            
+            container.innerHTML = dayEvents.map(event => {
+                const eventTime = event.time ? ` at ${event.time}` : '';
+                return `
+                    <div class="list-item" style="margin-bottom: 0.5rem;">
+                        <div>
+                            <strong>${event.title}</strong>${eventTime}
+                            ${event.description ? `<div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">${event.description}</div>` : ''}
+                            <div style="font-size: 0.7rem; color: #999;">Added by ${event.addedBy}</div>
+                        </div>
+                        <button class="btn-small btn-danger" onclick="removeDayEvent(${event.id})">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function addDayEvent(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('dayEventTitle').value.trim();
+            const time = document.getElementById('dayEventTime').value;
+            const description = document.getElementById('dayEventDescription').value.trim();
+            const selectedDate = document.getElementById('selectedDate').value;
+            
+            if (!title) return;
+            
+            const eventDateTime = selectedDate + (time ? `T${time}` : 'T00:00');
+            
+            familyData.events.push({
+                id: Date.now(),
+                title,
+                date: eventDateTime,
+                time: time || null,
+                description: description || null,
+                addedBy: currentUser ? currentUser.name : 'Unknown'
+            });
+            
+            saveFamilyData();
+            renderCalendar();
+            renderUpcomingEvents();
+            renderDayEvents(selectedDateForEvent);
+            
+            document.getElementById('dayEventTitle').value = '';
+            document.getElementById('dayEventTime').value = '';
+            document.getElementById('dayEventDescription').value = '';
+        }
+
+        function addQuickEvent() {
+            const titleInput = document.getElementById('quickEventTitle');
+            const title = titleInput.value.trim();
+            
+            if (!title) return;
+            
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0] + 'T00:00';
+            
+            familyData.events.push({
+                id: Date.now(),
+                title,
+                date: todayStr,
+                time: null,
+                description: null,
+                addedBy: currentUser ? currentUser.name : 'Unknown'
+            });
+            
+            titleInput.value = '';
+            saveFamilyData();
+            renderCalendar();
+            renderUpcomingEvents();
+        }
+
+        function removeDayEvent(id) {
+            familyData.events = familyData.events.filter(event => event.id !== id);
+            saveFamilyData();
+            renderCalendar();
+            renderUpcomingEvents();
+            if (selectedDateForEvent) {
+                renderDayEvents(selectedDateForEvent);
+            }
+        }
+
+        function previousMonth() {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        }
+
+        function nextMonth() {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        }
+
+        function renderUpcomingEvents() {
+            const container = document.getElementById('upcomingEvents');
+            if (!container) return;
+            
+            const now = new Date();
+            const upcoming = familyData.events
+                .filter(event => new Date(event.date) >= now)
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                .slice(0, 5);
+            
+            if (upcoming.length === 0) {
+                container.innerHTML = '<p style="color: #666; font-style: italic;">No upcoming events</p>';
+                return;
+            }
+            
+            container.innerHTML = upcoming.map(event => {
+                const eventDate = new Date(event.date);
+                const timeStr = event.time ? ` at ${event.time}` : '';
+                
+                return `
+                    <div class="list-item">
+                        <div>
+                            <strong>${event.title}</strong>
+                            <div style="font-size: 0.9rem; color: #2E8B57;">
+                                ${eventDate.toLocaleDateString()}${timeStr}
+                            </div>
+                            ${event.description ? `<div style="font-size: 0.8rem; color: #666;">${event.description}</div>` : ''}
+                            <div style="font-size: 0.7rem; color: #999;">Added by ${event.addedBy}</div>
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn-small btn-danger" onclick="removeDayEvent(${event.id})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function connectGoogleCalendar() {
+            alert('Google Calendar integration would be implemented here using Google Calendar API.');
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('familyOrgAuth');
+                localStorage.removeItem('familyOrgUser');
+                
+                currentUser = null;
+                authToken = null;
+                familyData = {
+                    name: '',
+                    code: '',
+                    members: [],
+                    grocery: [],
+                    recipes: [],
+                    houseTodos: [],
+                    familyTodos: [],
+                    events: []
+                };
+                
+                showAuthSection();
+                clearAuthMessages();
+            }
+        }
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuthStatus();
+        });
+    </script>
+</body>
+</html><!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -13,7 +1214,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #87CEEB 0%, #4682B4 50%, #2E8B57 100%);
             color: #333;
             min-height: 100vh;
         }
@@ -40,13 +1241,36 @@
         .logo {
             font-size: 1.8rem;
             font-weight: bold;
-            color: #667eea;
+            color: #4682B4;
         }
 
         .user-info {
             display: flex;
             align-items: center;
             gap: 1rem;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #4682B4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9rem;
         }
 
         .invite-btn, .logout-btn {
@@ -59,12 +1283,12 @@
         }
 
         .invite-btn {
-            background: #667eea;
+            background: #4682B4;
             color: white;
         }
 
         .invite-btn:hover {
-            background: #5a6fd8;
+            background: #2E8B57;
             transform: translateY(-2px);
         }
 
@@ -100,6 +1324,107 @@
             max-width: 400px;
         }
 
+        .auth-method-btn {
+            padding: 0.75rem 1rem;
+            border: 2px solid #4682B4;
+            background: white;
+            color: #4682B4;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .auth-method-btn:hover {
+            background: #E6F3FF;
+        }
+
+        .auth-method-btn.active {
+            background: #4682B4;
+            color: white;
+        }
+
+        .auth-method {
+            display: none;
+        }
+
+        .auth-method.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            background: rgba(70, 130, 180, 0.1);
+            padding: 0.25rem;
+            border-radius: 10px;
+        }
+
+        .auth-tab {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            flex: 1;
+            font-weight: 500;
+            color: #4682B4;
+        }
+
+        .auth-tab.active {
+            background: #4682B4;
+            color: white;
+        }
+
+        .auth-form {
+            display: none;
+        }
+
+        .auth-form.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .auth-error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid #c62828;
+            font-size: 0.9rem;
+        }
+
+        .auth-success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid #2e7d32;
+            font-size: 0.9rem;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #4682B4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         .nav-tabs {
             display: flex;
             gap: 0.5rem;
@@ -122,13 +1447,13 @@
         }
 
         .nav-tab.active {
-            background: #667eea;
+            background: #4682B4;
             color: white;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 15px rgba(70, 130, 180, 0.4);
         }
 
         .nav-tab:not(.active):hover {
-            background: rgba(102, 126, 234, 0.1);
+            background: rgba(70, 130, 180, 0.1);
         }
 
         .tab-content {
@@ -172,12 +1497,12 @@
 
         input:focus, textarea:focus, select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: #4682B4;
+            box-shadow: 0 0 0 3px rgba(70, 130, 180, 0.1);
         }
 
         button {
-            background: #667eea;
+            background: #4682B4;
             color: white;
             padding: 0.75rem 1.5rem;
             border: none;
@@ -190,9 +1515,9 @@
         }
 
         button:hover {
-            background: #5a6fd8;
+            background: #2E8B57;
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 15px rgba(70, 130, 180, 0.4);
         }
 
         .list-container {
@@ -207,7 +1532,7 @@
             padding: 1rem;
             background: rgba(255, 255, 255, 0.7);
             border-radius: 10px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #4682B4;
             transition: all 0.3s ease;
         }
 
@@ -267,11 +1592,11 @@
             font-size: 1.2rem;
             font-weight: bold;
             margin-bottom: 0.5rem;
-            color: #667eea;
+            color: #4682B4;
         }
 
         .recipe-ingredients {
-            background: #f8f9ff;
+            background: #E6F3FF;
             padding: 1rem;
             border-radius: 10px;
             margin: 1rem 0;
@@ -284,13 +1609,103 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
 
-        .calendar-header {
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .calendar-header-day {
+            background: #4682B4;
+            color: white;
+            padding: 0.75rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .calendar-day {
+            background: white;
+            padding: 0.75rem;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .calendar-day:hover {
+            background: #E6F3FF;
+        }
+
+        .calendar-day.other-month {
+            background: #f5f5f5;
+            color: #999;
+        }
+
+        .calendar-day.today {
+            background: #87CEEB;
+            color: white;
+            font-weight: bold;
+        }
+
+        .calendar-day.has-events {
+            background: #B0E0E6;
+        }
+
+        .calendar-day.has-events.today {
+            background: #4682B4;
+        }
+
+        .calendar-day-number {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .calendar-events {
+            font-size: 0.7rem;
+            color: #2E8B57;
+            overflow: hidden;
+        }
+
+        .calendar-event-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: #2E8B57;
+            border-radius: 50%;
+            margin-right: 0.25rem;
+        }
+
+        .calendar-nav {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .calendar-nav button {
+            width: auto;
+            padding: 0.5rem 1rem;
+            background: #4682B4;
+        }
+
+        .calendar-nav h3 {
+            color: #2E8B57;
+            margin: 0;
+        }
+
+        .calendar-quick-add {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 2px solid #87CEEB;
         }
 
         .modal {
@@ -342,7 +1757,7 @@
         }
 
         .member-badge {
-            background: #667eea;
+            background: #4682B4;
             color: white;
             padding: 0.25rem 0.75rem;
             border-radius: 20px;
@@ -403,16 +1818,118 @@
                 width: 100%;
                 justify-content: flex-end;
             }
+
+            .calendar-day {
+                min-height: 60px;
+                padding: 0.5rem;
+            }
+            
+            .calendar-header-day {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
         }
     </style>
 </head>
 <body>
     <div id="auth-section" class="auth-container">
         <div class="auth-box">
-            <h2 style="text-align: center; margin-bottom: 2rem; color: #667eea;">Welcome to Family Organizer</h2>
-            <div class="form-group">
-                <input type="text" id="familyName" placeholder="Enter your family name (e.g., Smith Family)" style="margin-bottom: 1rem;">
-                <button onclick="createFamily()">Create/Join Family</button>
+            <h2 style="text-align: center; margin-bottom: 2rem; color: #4682B4;">Welcome to Family Organizer</h2>
+            
+            <!-- Auth Method Selection -->
+            <div class="auth-method-selector" id="authMethodSelector">
+                <h3 style="text-align: center; margin-bottom: 1rem; color: #2E8B57;">Choose Login Method</h3>
+                <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+                    <button onclick="showAuthMethod('email')" class="auth-method-btn active" id="emailAuthBtn">📧 Email</button>
+                    <button onclick="showAuthMethod('google')" class="auth-method-btn" id="googleAuthBtn">🔍 Google</button>
+                    <button onclick="showAuthMethod('guest')" class="auth-method-btn" id="guestAuthBtn">👤 Guest</button>
+                </div>
+            </div>
+
+            <!-- Email Authentication -->
+            <div id="emailAuth" class="auth-method active">
+                <div class="auth-tabs">
+                    <button onclick="switchAuthTab('login')" class="auth-tab active" id="loginTab">Login</button>
+                    <button onclick="switchAuthTab('register')" class="auth-tab" id="registerTab">Sign Up</button>
+                </div>
+
+                <!-- Login Form -->
+                <form id="loginForm" class="auth-form active" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="loginEmail">Email:</label>
+                        <input type="email" id="loginEmail" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password:</label>
+                        <input type="password" id="loginPassword" required placeholder="Your password">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="rememberMe">
+                        <label for="rememberMe" style="margin: 0;">Remember me</label>
+                    </div>
+                    <button type="submit">Login</button>
+                    <button type="button" onclick="showForgotPassword()" style="background: transparent; color: #4682B4; text-decoration: underline; font-size: 0.9rem; margin-top: 0.5rem;">Forgot Password?</button>
+                </form>
+
+                <!-- Register Form -->
+                <form id="registerForm" class="auth-form" onsubmit="handleRegister(event)">
+                    <div class="form-group">
+                        <label for="registerName">Full Name:</label>
+                        <input type="text" id="registerName" required placeholder="John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label for="registerEmail">Email:</label>
+                        <input type="email" id="registerEmail" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="registerPassword">Password:</label>
+                        <input type="password" id="registerPassword" required placeholder="Choose a strong password" minlength="8">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm Password:</label>
+                        <input type="password" id="confirmPassword" required placeholder="Confirm your password">
+                    </div>
+                    <div class="form-group">
+                        <label for="familyNameRegister">Family Name (optional):</label>
+                        <input type="text" id="familyNameRegister" placeholder="Smith Family">
+                    </div>
+                    <button type="submit">Create Account</button>
+                </form>
+            </div>
+
+            <!-- Google Authentication -->
+            <div id="googleAuth" class="auth-method">
+                <div style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 4rem; margin-bottom: 1rem;">🔍</div>
+                    <h3 style="color: #4682B4; margin-bottom: 1rem;">Sign in with Google</h3>
+                    <p style="color: #666; margin-bottom: 2rem;">Use your Google account to access Family Organizer securely.</p>
+                    <button onclick="handleGoogleAuth()" style="background: #4285f4; display: flex; align-items: center; gap: 0.5rem; justify-content: center; margin: 0 auto;">
+                        <span>🔍</span> Continue with Google
+                    </button>
+                </div>
+            </div>
+
+            <!-- Guest Authentication -->
+            <div id="guestAuth" class="auth-method">
+                <div style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 4rem; margin-bottom: 1rem;">👤</div>
+                    <h3 style="color: #4682B4; margin-bottom: 1rem;">Guest Access</h3>
+                    <p style="color: #666; margin-bottom: 1rem;">Try Family Organizer without creating an account.</p>
+                    <div class="form-group">
+                        <input type="text" id="guestName" placeholder="Enter your name" style="margin-bottom: 1rem;">
+                        <input type="text" id="guestFamilyName" placeholder="Enter family name (optional)">
+                    </div>
+                    <button onclick="handleGuestAuth()">Continue as Guest</button>
+                </div>
+            </div>
+
+            <!-- Join Family Section -->
+            <div class="join-family-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #ddd;">
+                <h4 style="color: #2E8B57; text-align: center; margin-bottom: 1rem;">Join Existing Family</h4>
+                <div class="form-group">
+                    <input type="text" id="joinFamilyCode" placeholder="Enter family invitation code" style="margin-bottom: 1rem;">
+                    <button onclick="joinFamily()" style="background: #2E8B57;">Join Family</button>
+                </div>
             </div>
         </div>
     </div>
@@ -422,6 +1939,13 @@
             <div class="header-content">
                 <div class="logo" id="familyTitle">Family Organizer</div>
                 <div class="user-info">
+                    <div class="user-profile" id="userProfile">
+                        <div class="user-avatar" id="userAvatar">👤</div>
+                        <div>
+                            <div style="font-size: 0.9rem; font-weight: 500;" id="userName">User</div>
+                            <div style="font-size: 0.7rem; opacity: 0.8;" id="userEmail">user@email.com</div>
+                        </div>
+                    </div>
                     <div class="family-members" id="familyMembers"></div>
                     <button class="invite-btn" onclick="showInviteModal()">Invite Family</button>
                     <button class="logout-btn" onclick="logout()">Logout</button>
@@ -456,7 +1980,17 @@
                     <input type="text" id="houseTodo" placeholder="Add house task..." onkeypress="handleEnter(event, addHouseTodo)">
                     <button onclick="addHouseTodo()" style="margin-top: 0.5rem;">Add Task</button>
                 </div>
-                <div id="houseTodosList" class="list-container"></div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <h3 style="color: #4682B4; margin-bottom: 1rem;">📋 Pending Tasks</h3>
+                    <div id="houseTodosList" class="list-container"></div>
+                </div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <h3 style="color: #51cf66; margin-bottom: 1rem;">✅ Completed Tasks</h3>
+                    <div id="houseTodosCompleted" class="list-container"></div>
+                    <button onclick="clearCompletedHouseTodos()" class="btn-small btn-danger" style="margin-top: 1rem;">Clear All Completed</button>
+                </div>
             </div>
 
             <div id="family-todos" class="tab-content">
@@ -464,23 +1998,48 @@
                     <input type="text" id="familyTodo" placeholder="Add family task..." onkeypress="handleEnter(event, addFamilyTodo)">
                     <button onclick="addFamilyTodo()" style="margin-top: 0.5rem;">Add Task</button>
                 </div>
-                <div id="familyTodosList" class="list-container"></div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <h3 style="color: #4682B4; margin-bottom: 1rem;">📋 Pending Tasks</h3>
+                    <div id="familyTodosList" class="list-container"></div>
+                </div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <h3 style="color: #51cf66; margin-bottom: 1rem;">✅ Completed Tasks</h3>
+                    <div id="familyTodosCompleted" class="list-container"></div>
+                    <button onclick="clearCompletedFamilyTodos()" class="btn-small btn-danger" style="margin-top: 1rem;">Clear All Completed</button>
+                </div>
             </div>
 
             <div id="calendar" class="tab-content">
                 <div class="calendar-container">
-                    <div class="calendar-header">
-                        <h3>Family Calendar</h3>
+                    <div class="calendar-nav">
+                        <button onclick="previousMonth()">&lt; Previous</button>
+                        <h3 id="currentMonthYear">January 2025</h3>
+                        <button onclick="nextMonth()">Next &gt;</button>
+                    </div>
+                    
+                    <div class="calendar-quick-add">
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <input type="text" id="quickEventTitle" placeholder="Quick add event..." style="flex: 1; min-width: 200px;">
+                            <button onclick="addQuickEvent()" style="width: auto; background: #2E8B57;">Add to Today</button>
+                        </div>
+                    </div>
+
+                    <div class="calendar-grid" id="calendarGrid">
+                        <!-- Calendar will be generated here -->
+                    </div>
+                    
+                    <div style="margin-top: 1rem;">
                         <button class="google-cal-connect" onclick="connectGoogleCalendar()">
                             📅 Connect Google Calendar
                         </button>
                     </div>
-                    <div class="form-group">
-                        <input type="text" id="eventTitle" placeholder="Event title...">
-                        <input type="datetime-local" id="eventDate" style="margin-top: 0.5rem;">
-                        <button onclick="addCalendarEvent()" style="margin-top: 0.5rem;">Add Event</button>
+                    
+                    <div style="margin-top: 2rem;">
+                        <h4 style="color: #2E8B57;">Upcoming Events</h4>
+                        <div id="upcomingEvents" class="list-container"></div>
                     </div>
-                    <div id="calendarEvents" class="list-container"></div>
                 </div>
             </div>
         </div>
@@ -492,947 +2051,4 @@
             <button class="close-modal" onclick="closeModal('inviteModal')">&times;</button>
             <h3>Invite Family Members</h3>
             <p style="margin: 1rem 0; color: #666;">Share this family code with your family members:</p>
-            <div style="background: #f0f0f0; padding: 1rem; border-radius: 10px; text-align: center; font-family: monospace; font-size: 1.2rem; margin: 1rem 0;" id="familyCode"></div>
-            <button onclick="copyFamilyCode()">Copy Family Code</button>
-            <p style="margin-top: 1rem; font-size: 0.9rem; color: #666;">Family members can join by entering this code on the login page.</p>
-        </div>
-    </div>
-
-    <div id="recipeModal" class="modal">
-        <div class="modal-content">
-            <button class="close-modal" onclick="closeModal('recipeModal')">&times;</button>
-            <h3>Add New Recipe</h3>
-            <form onsubmit="addRecipe(event)">
-                <div class="form-group">
-                    <label for="recipeTitle">Recipe Title:</label>
-                    <input type="text" id="recipeTitle" required>
-                </div>
-                <div class="form-group">
-                    <label for="recipeIngredients">Ingredients (one per line):</label>
-                    <textarea id="recipeIngredients" rows="5" placeholder="1 cup flour&#10;2 eggs&#10;1/2 cup milk" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="recipeInstructions">Instructions:</label>
-                    <textarea id="recipeInstructions" rows="5" required></textarea>
-                </div>
-                <button type="submit">Add Recipe</button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        // Data storage
-        let familyData = {
-            name: '',
-            code: '',
-            members: [],
-            grocery: [],
-            recipes: [],
-            houseTodos: [],
-            familyTodos: [],
-            events: []
-        };
-
-        // Load data from localStorage on page load
-        window.onload = function() {
-            loadFamilyData();
-        };
-
-        function loadFamilyData() {
-            const saved = localStorage.getItem('familyOrganizer');
-            if (saved) {
-                familyData = JSON.parse(saved);
-                showMainApp();
-            }
-        }
-
-        function saveFamilyData() {
-            localStorage.setItem('familyOrganizer', JSON.stringify(familyData));
-        }
-
-        function createFamily() {
-            const familyName = document.getElementById('familyName').value.trim();
-            if (!familyName) {
-                alert('Please enter a family name');
-                return;
-            }
-
-            familyData.name = familyName;
-            familyData.code = generateFamilyCode();
-            familyData.members = [familyName.split(' ')[0] || 'Member'];
-            
-            saveFamilyData();
-            showMainApp();
-        }
-
-        function generateFamilyCode() {
-            return Math.random().toString(36).substr(2, 8).toUpperCase();
-        }
-
-        function showMainApp() {
-            document.getElementById('auth-section').style.display = 'none';
-            document.getElementById('main-app').style.display = 'block';
-            
-            document.getElementById('familyTitle').textContent = familyData.name;
-            updateFamilyMembers();
-            renderAllData();
-        }
-
-        function updateFamilyMembers() {
-            const container = document.getElementById('familyMembers');
-            container.innerHTML = familyData.members.map(member => 
-                `<span class="member-badge">${member}</span>`
-            ).join('');
-        }
-
-        function renderAllData() {
-            renderGroceryList();
-            renderRecipes();
-            renderHouseTodos();
-            renderFamilyTodos();
-            renderCalendarEvents();
-        }
-
-        // Tab switching
-        function switchTab(tabName) {
-            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-        }
-
-        // Utility functions
-        function handleEnter(event, callback) {
-            if (event.key === 'Enter') {
-                callback();
-            }
-        }
-
-        function showModal(modalId) {
-            document.getElementById(modalId).classList.add('active');
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.remove('active');
-        }
-
-        // Invite functionality
-        function showInviteModal() {
-            document.getElementById('familyCode').textContent = familyData.code;
-            showModal('inviteModal');
-        }
-
-        function copyFamilyCode() {
-            const code = document.getElementById('familyCode').textContent;
-            navigator.clipboard.writeText(code).then(() => {
-                alert('Family code copied to clipboard!');
-            });
-        }
-
-        // Grocery List functions
-        function addGroceryItem() {
-            const input = document.getElementById('groceryItem');
-            const item = input.value.trim();
-            if (!item) return;
-
-            familyData.grocery.push({
-                id: Date.now(),
-                text: item,
-                completed: false,
-                addedBy: familyData.members[0]
-            });
-
-            input.value = '';
-            saveFamilyData();
-            renderGroceryList();
-        }
-
-        function renderGroceryList() {
-            const container = document.getElementById('groceryList');
-            container.innerHTML = familyData.grocery.map(item => `
-                <div class="list-item ${item.completed ? 'completed' : ''}">
-                    <div>
-                        <strong>${item.text}</strong>
-                        <div style="font-size: 0.8rem; color: #666;">Added by ${item.addedBy}</div>
-                    </div>
-                    <div class="item-actions">
-                        <button class="btn-small btn-success" onclick="toggleGroceryItem(${item.id})">
-                            ${item.completed ? 'Undo' : 'Done'}
-                        </button>
-                        <button class="btn-small btn-danger" onclick="removeGroceryItem(${item.id})">Delete</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function toggleGroceryItem(id) {
-            const item = familyData.grocery.find(item => item.id === id);
-            if (item) {
-                item.completed = !item.completed;
-                saveFamilyData();
-                renderGroceryList();
-            }
-        }
-
-        function removeGroceryItem(id) {
-            familyData.grocery = familyData.grocery.filter(item => item.id !== id);
-            saveFamilyData();
-            renderGroceryList();
-        }
-
-        // Recipe functions
-        function showRecipeModal() {
-            showModal('recipeModal');
-        }
-
-        function addRecipe(event) {
-            event.preventDefault();
-            
-            const title = document.getElementById('recipeTitle').value;
-            const ingredients = document.getElementById('recipeIngredients').value;
-            const instructions = document.getElementById('recipeInstructions').value;
-
-            familyData.recipes.push({
-                id: Date.now(),
-                title,
-                ingredients: ingredients.split('\n').filter(i => i.trim()),
-                instructions,
-                addedBy: familyData.members[0]
-            });
-
-            document.getElementById('recipeTitle').value = '';
-            document.getElementById('recipeIngredients').value = '';
-            document.getElementById('recipeInstructions').value = '';
-
-            saveFamilyData();
-            renderRecipes();
-            closeModal('recipeModal');
-        }
-
-        function renderRecipes() {
-            const container = document.getElementById('recipesList');
-            container.innerHTML = familyData.recipes.map(recipe => `
-                <div class="recipe-card">
-                    <div class="recipe-title">${recipe.title}</div>
-                    <div style="font-size: 0.8rem; color: #666; margin-bottom: 1rem;">Added by ${recipe.addedBy}</div>
-                    
-                    <div class="recipe-ingredients">
-                        <strong>Ingredients:</strong>
-                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                            ${recipe.ingredients.map(ing => `<li>${ing}</li>`).join('')}
-                        </ul>
-                    </div>
-                    
-                    <div style="margin: 1rem 0;">
-                        <strong>Instructions:</strong>
-                        <p style="margin-top: 0.5rem; line-height: 1.6;">${recipe.instructions}</p>
-                    </div>
-                    
-                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                        <button class="btn-small btn-success" onclick="addIngredientsToGrocery(${recipe.id})">Add to Grocery List</button>
-                        <button class="btn-small btn-danger" onclick="removeRecipe(${recipe.id})">Delete Recipe</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function addIngredientsToGrocery(recipeId) {
-            const recipe = familyData.recipes.find(r => r.id === recipeId);
-            if (recipe) {
-                recipe.ingredients.forEach(ingredient => {
-                    familyData.grocery.push({
-                        id: Date.now() + Math.random(),
-                        text: ingredient,
-                        completed: false,
-                        addedBy: `Recipe: ${recipe.title}`
-                    });
-                });
-                saveFamilyData();
-                renderGroceryList();
-                alert(`Added ${recipe.ingredients.length} ingredients to grocery list!`);
-            }
-        }
-
-        function removeRecipe(id) {
-            familyData.recipes = familyData.recipes.filter(recipe => recipe.id !== id);
-            saveFamilyData();
-            renderRecipes();
-        }
-
-        // House todos functions
-        function addHouseTodo() {
-            const input = document.getElementById('houseTodo');
-            const task = input.value.trim();
-            if (!task) return;
-
-            familyData.houseTodos.push({
-                id: Date.now(),
-                text: task,
-                completed: false,
-                addedBy: familyData.members[0]
-            });
-
-            input.value = '';
-            saveFamilyData();
-            renderHouseTodos();
-        }
-
-        function renderHouseTodos() {
-            const container = document.getElementById('houseTodosList');
-            container.innerHTML = familyData.houseTodos.map(todo => `
-                <div class="list-item ${todo.completed ? 'completed' : ''}">
-                    <div>
-                        <strong>${todo.text}</strong>
-                        <div style="font-size: 0.8rem; color: #666;">Added by ${todo.addedBy}</div>
-                    </div>
-                    <div class="item-actions">
-                        <button class="btn-small btn-success" onclick="toggleHouseTodo(${todo.id})">
-                            ${todo.completed ? 'Undo' : 'Done'}
-                        </button>
-                        <button class="btn-small btn-danger" onclick="removeHouseTodo(${todo.id})">Delete</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function toggleHouseTodo(id) {
-            const todo = familyData.houseTodos.find(todo => todo.id === id);
-            if (todo) {
-                todo.completed = !todo.completed;
-                saveFamilyData();
-                renderHouseTodos();
-            }
-        }
-
-        function removeHouseTodo(id) {
-            familyData.houseTodos = familyData.houseTodos.filter(todo => todo.id !== id);
-            saveFamilyData();
-            renderHouseTodos();
-        }
-
-        // Family todos functions
-        function addFamilyTodo() {
-            const input = document.getElementById('familyTodo');
-            const task = input.value.trim();
-            if (!task) return;
-
-            familyData.familyTodos.push({
-                id: Date.now(),
-                text: task,
-                completed: false,
-                addedBy: familyData.members[0]
-            });
-
-            input.value = '';
-            saveFamilyData();
-            renderFamilyTodos();
-        }
-
-        function renderFamilyTodos() {
-            const container = document.getElementById('familyTodosList');
-            container.innerHTML = familyData.familyTodos.map(todo => `
-                <div class="list-item ${todo.completed ? 'completed' : ''}">
-                    <div>
-                        <strong>${todo.text}</strong>
-                        <div style="font-size: 0.8rem; color: #666;">Added by ${todo.addedBy}</div>
-                    </div>
-                    <div class="item-actions">
-                        <button class="btn-small btn-success" onclick="toggleFamilyTodo(${todo.id})">
-                            ${todo.completed ? 'Undo' : 'Done'}
-                        </button>
-                        <button class="btn-small btn-danger" onclick="removeFamilyTodo(${todo.id})">Delete</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function toggleHouseTodo(id) {
-            const todo = familyData.houseTodos.find(todo => todo.id === id);
-            if (todo) {
-                todo.completed = !todo.completed;
-                if (todo.completed) {
-                    todo.completedBy = familyData.members[0];
-                    todo.completedDate = new Date().toISOString();
-                } else {
-                    delete todo.completedBy;
-                    delete todo.completedDate;
-                }
-                saveFamilyData();
-                renderHouseTodos();
-            }
-        }
-
-        function removeHouseTodo(id) {
-            familyData.houseTodos = familyData.houseTodos.filter(todo => todo.id !== id);
-            saveFamilyData();
-            renderHouseTodos();
-        }
-
-        function clearCompletedHouseTodos() {
-            if (confirm('Are you sure you want to clear all completed house tasks?')) {
-                familyData.houseTodos = familyData.houseTodos.filter(todo => !todo.completed);
-                saveFamilyData();
-                renderHouseTodos();
-            }
-        }
-
-        // Family todos functions
-        function addFamilyTodo() {
-            const input = document.getElementById('familyTodo');
-            const task = input.value.trim();
-            if (!task) return;
-
-            familyData.familyTodos.push({
-                id: Date.now(),
-                text: task,
-                completed: false,
-                addedBy: familyData.members[0]
-            });
-
-            input.value = '';
-            saveFamilyData();
-            renderFamilyTodos();
-        }
-
-        function toggleFamilyTodo(id) {
-            const todo = familyData.familyTodos.find(todo => todo.id === id);
-            if (todo) {
-                todo.completed = !todo.completed;
-                if (todo.completed) {
-                    todo.completedBy = familyData.members[0];
-                    todo.completedDate = new Date().toISOString();
-                } else {
-                    delete todo.completedBy;
-                    delete todo.completedDate;
-                }
-                saveFamilyData();
-                renderFamilyTodos();
-            }
-        }
-
-        function removeFamilyTodo(id) {
-            familyData.familyTodos = familyData.familyTodos.filter(todo => todo.id !== id);
-            saveFamilyData();
-            renderFamilyTodos();
-        }
-
-        function clearCompletedFamilyTodos() {
-            if (confirm('Are you sure you want to clear all completed family tasks?')) {
-                familyData.familyTodos = familyData.familyTodos.filter(todo => !todo.completed);
-                saveFamilyData();
-                renderFamilyTodos();
-            }
-        }
-
-        // Calendar functionality
-        let currentDate = new Date();
-        let selectedDateForEvent = null;
-
-        function renderCalendar() {
-            const grid = document.getElementById('calendarGrid');
-            const monthYear = document.getElementById('currentMonthYear');
-            
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
-            
-            monthYear.textContent = new Date(year, month).toLocaleDateString('en-US', { 
-                month: 'long', 
-                year: 'numeric' 
-            });
-            
-            // Clear the grid
-            grid.innerHTML = '';
-            
-            // Add day headers
-            const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-            dayHeaders.forEach(day => {
-                const dayElement = document.createElement('div');
-                dayElement.className = 'calendar-header-day';
-                dayElement.textContent = day;
-                grid.appendChild(dayElement);
-            });
-            
-            // Get first day of month and number of days
-            const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            const daysInMonth = lastDay.getDate();
-            const startingDayOfWeek = firstDay.getDay();
-            
-            const today = new Date();
-            const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
-            const todayDate = today.getDate();
-            
-            // Add empty cells for days before the first day of the month
-            for (let i = 0; i < startingDayOfWeek; i++) {
-                const prevMonthDay = new Date(year, month, -(startingDayOfWeek - 1 - i));
-                const dayElement = createCalendarDay(prevMonthDay, true);
-                grid.appendChild(dayElement);
-            }
-            
-            // Add days of the current month
-            for (let day = 1; day <= daysInMonth; day++) {
-                const date = new Date(year, month, day);
-                const isToday = isCurrentMonth && day === todayDate;
-                const dayElement = createCalendarDay(date, false, isToday);
-                grid.appendChild(dayElement);
-            }
-            
-            // Fill remaining cells with next month days
-            const totalCells = grid.children.length - 7; // Subtract header row
-            const remainingCells = 42 - totalCells; // 6 rows * 7 days
-            for (let day = 1; day <= remainingCells; day++) {
-                const nextMonthDay = new Date(year, month + 1, day);
-                const dayElement = createCalendarDay(nextMonthDay, true);
-                grid.appendChild(dayElement);
-            }
-        }
-
-        function createCalendarDay(date, isOtherMonth = false, isToday = false) {
-            const dayElement = document.createElement('div');
-            dayElement.className = 'calendar-day';
-            
-            if (isOtherMonth) dayElement.classList.add('other-month');
-            if (isToday) dayElement.classList.add('today');
-            
-            const dateStr = date.toISOString().split('T')[0];
-            const dayEvents = familyData.events.filter(event => {
-                const eventDate = new Date(event.date).toISOString().split('T')[0];
-                return eventDate === dateStr;
-            });
-            
-            if (dayEvents.length > 0) {
-                dayElement.classList.add('has-events');
-            }
-            
-            dayElement.innerHTML = `
-                <div class="calendar-day-number">${date.getDate()}</div>
-                <div class="calendar-events">
-                    ${dayEvents.slice(0, 2).map(event => `
-                        <div style="font-size: 0.6rem; margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            <span class="calendar-event-dot"></span>${event.title}
-                        </div>
-                    `).join('')}
-                    ${dayEvents.length > 2 ? `<div style="font-size: 0.6rem; color: #2E8B57;">+${dayEvents.length - 2} more</div>` : ''}
-                </div>
-            `;
-            
-            dayElement.onclick = () => openDayModal(date);
-            
-            return dayElement;
-        }
-
-        function openDayModal(date) {
-            selectedDateForEvent = date;
-            const dateStr = date.toLocaleDateString('en-US', { 
-                weekday: 'long',
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            });
-            
-            document.getElementById('dayEventModalTitle').textContent = `Events for ${dateStr}`;
-            document.getElementById('selectedDate').value = date.toISOString().split('T')[0];
-            
-            // Clear form
-            document.getElementById('dayEventTitle').value = '';
-            document.getElementById('dayEventTime').value = '';
-            document.getElementById('dayEventDescription').value = '';
-            
-            // Show existing events for this day
-            renderDayEvents(date);
-            
-            showModal('dayEventModal');
-        }
-
-        function renderDayEvents(date) {
-            const dateStr = date.toISOString().split('T')[0];
-            const dayEvents = familyData.events.filter(event => {
-                const eventDate = new Date(event.date).toISOString().split('T')[0];
-                return eventDate === dateStr;
-            });
-            
-            const container = document.getElementById('dayEventsList');
-            if (dayEvents.length === 0) {
-                container.innerHTML = '<p style="color: #666; font-style: italic;">No events for this day</p>';
-                return;
-            }
-            
-            container.innerHTML = dayEvents.map(event => {
-                const eventTime = event.time ? ` at ${event.time}` : '';
-                return `
-                    <div class="list-item" style="margin-bottom: 0.5rem;">
-                        <div>
-                            <strong>${event.title}</strong>${eventTime}
-                            ${event.description ? `<div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">${event.description}</div>` : ''}
-                            <div style="font-size: 0.7rem; color: #999;">Added by ${event.addedBy}</div>
-                        </div>
-                        <button class="btn-small btn-danger" onclick="removeDayEvent(${event.id})">Delete</button>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function addDayEvent(event) {
-            event.preventDefault();
-            
-            const title = document.getElementById('dayEventTitle').value.trim();
-            const time = document.getElementById('dayEventTime').value;
-            const description = document.getElementById('dayEventDescription').value.trim();
-            const selectedDate = document.getElementById('selectedDate').value;
-            
-            if (!title) return;
-            
-            const eventDateTime = selectedDate + (time ? `T${time}` : 'T00:00');
-            
-            familyData.events.push({
-                id: Date.now(),
-                title,
-                date: eventDateTime,
-                time: time || null,
-                description: description || null,
-                addedBy: familyData.members[0]
-            });
-            
-            saveFamilyData();
-            renderCalendar();
-            renderUpcomingEvents();
-            renderDayEvents(selectedDateForEvent);
-            
-            // Clear form
-            document.getElementById('dayEventTitle').value = '';
-            document.getElementById('dayEventTime').value = '';
-            document.getElementById('dayEventDescription').value = '';
-        }
-
-        function addQuickEvent() {
-            const titleInput = document.getElementById('quickEventTitle');
-            const title = titleInput.value.trim();
-            
-            if (!title) return;
-            
-            const today = new Date();
-            const todayStr = today.toISOString().split('T')[0] + 'T00:00';
-            
-            familyData.events.push({
-                id: Date.now(),
-                title,
-                date: todayStr,
-                time: null,
-                description: null,
-                addedBy: familyData.members[0]
-            });
-            
-            titleInput.value = '';
-            saveFamilyData();
-            renderCalendar();
-            renderUpcomingEvents();
-        }
-
-        function removeDayEvent(id) {
-            familyData.events = familyData.events.filter(event => event.id !== id);
-            saveFamilyData();
-            renderCalendar();
-            renderUpcomingEvents();
-            if (selectedDateForEvent) {
-                renderDayEvents(selectedDateForEvent);
-            }
-        }
-
-        function previousMonth() {
-            currentDate.setMonth(currentDate.getMonth() - 1);
-            renderCalendar();
-        }
-
-        function nextMonth() {
-            currentDate.setMonth(currentDate.getMonth() + 1);
-            renderCalendar();
-        }
-
-        function renderUpcomingEvents() {
-            const container = document.getElementById('upcomingEvents');
-            const now = new Date();
-            const upcoming = familyData.events
-                .filter(event => new Date(event.date) >= now)
-                .sort((a, b) => new Date(a.date) - new Date(b.date))
-                .slice(0, 5);
-            
-            if (upcoming.length === 0) {
-                container.innerHTML = '<p style="color: #666; font-style: italic;">No upcoming events</p>';
-                return;
-            }
-            
-            container.innerHTML = upcoming.map(event => {
-                const eventDate = new Date(event.date);
-                const timeStr = event.time ? ` at ${event.time}` : '';
-                
-                return `
-                    <div class="list-item">
-                        <div>
-                            <strong>${event.title}</strong>
-                            <div style="font-size: 0.9rem; color: #2E8B57;">
-                                ${eventDate.toLocaleDateString()}${timeStr}
-                            </div>
-                            ${event.description ? `<div style="font-size: 0.8rem; color: #666;">${event.description}</div>` : ''}
-                            <div style="font-size: 0.7rem; color: #999;">Added by ${event.addedBy}</div>
-                        </div>
-                        <div class="item-actions">
-                            <button class="btn-small btn-danger" onclick="removeDayEvent(${event.id})">Delete</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }CalendarEvents();
-        }
-
-        function renderCalendarEvents() {
-            const container = document.getElementById('calendarEvents');
-            const sortedEvents = familyData.events.sort((a, b) => new Date(a.date) - new Date(b.date));
-            
-            container.innerHTML = sortedEvents.map(event => {
-                const eventDate = new Date(event.date);
-                const now = new Date();
-                const isPast = eventDate < now;
-                
-                return `
-                    <div class="list-item ${isPast ? 'completed' : ''}">
-                        <div>
-                            <strong>${event.title}</strong>
-                            <div style="font-size: 0.9rem; color: #666;">
-                                ${eventDate.toLocaleDateString()} at ${eventDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </div>
-                            <div style="font-size: 0.8rem; color: #666;">Added by ${event.addedBy}</div>
-                        </div>
-                        <div class="item-actions">
-                            <button class="btn-small btn-danger" onclick="removeCalendarEvent(${event.id})">Delete</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function removeCalendarEvent(id) {
-            familyData.events = familyData.events.filter(event => event.id !== id);
-            saveFamilyData();
-            renderCalendarEvents();
-        }
-
-        function connectGoogleCalendar() {
-            // This is a placeholder for Google Calendar integration
-            // In a real implementation, you would use Google Calendar API
-            alert('Google Calendar integration would be implemented here using Google Calendar API. This requires:\n\n1. Google Cloud Console project setup\n2. Calendar API credentials\n3. OAuth 2.0 authentication\n\nFor now, you can manually sync events between this calendar and your Google Calendar.');
-        }
-
-        function logout() {
-            if (confirm('Are you sure you want to logout? This will clear all local data.')) {
-                localStorage.removeItem('familyOrganizer');
-                location.reload();
-            }
-        }
-
-        // Auto-save functionality - saves data every 30 seconds
-        setInterval(() => {
-            if (familyData.name) {
-                saveFamilyData();
-            }
-        }, 30000);
-
-        // Service Worker for offline functionality (basic implementation)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
-                navigator.serviceWorker.register('data:text/javascript;base64,' + btoa(`
-                    const CACHE_NAME = 'family-organizer-v1';
-                    const urlsToCache = ['/'];
-                    
-                    self.addEventListener('install', function(event) {
-                        event.waitUntil(
-                            caches.open(CACHE_NAME)
-                                .then(function(cache) {
-                                    return cache.addAll(urlsToCache);
-                                })
-                        );
-                    });
-                    
-                    self.addEventListener('fetch', function(event) {
-                        event.respondWith(
-                            caches.match(event.request)
-                                .then(function(response) {
-                                    if (response) {
-                                        return response;
-                                    }
-                                    return fetch(event.request);
-                                }
-                            )
-                        );
-                    });
-                `)).then(function(registration) {
-                    console.log('ServiceWorker registration successful');
-                }).catch(function(err) {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
-            });
-        }
-
-        // Family sharing simulation
-        function simulateFamilySync() {
-            // In a real implementation, this would sync with a backend database
-            // For demo purposes, we're using localStorage
-            const familyCode = familyData.code;
-            const sharedData = localStorage.getItem(`family_shared_${familyCode}`);
-            
-            if (sharedData) {
-                const shared = JSON.parse(sharedData);
-                // Merge data from other family members
-                if (shared.lastUpdate > familyData.lastUpdate) {
-                    familyData = { ...familyData, ...shared };
-                    renderAllData();
-                }
-            }
-            
-            // Save current data as shared
-            familyData.lastUpdate = Date.now();
-            localStorage.setItem(`family_shared_${familyCode}`, JSON.stringify(familyData));
-        }
-
-        // Sync every 10 seconds to simulate real-time collaboration
-        setInterval(simulateFamilySync, 10000);
-
-        // Add keyboard shortcuts
-        document.addEventListener('keydown', function(event) {
-            // Ctrl/Cmd + N for new item based on current tab
-            if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
-                event.preventDefault();
-                const activeTab = document.querySelector('.tab-content.active');
-                if (activeTab) {
-                    const tabId = activeTab.id;
-                    switch(tabId) {
-                        case 'grocery':
-                            document.getElementById('groceryItem').focus();
-                            break;
-                        case 'recipes':
-                            showRecipeModal();
-                            break;
-                        case 'house-todos':
-                            document.getElementById('houseTodo').focus();
-                            break;
-                        case 'family-todos':
-                            document.getElementById('familyTodo').focus();
-                            break;
-                        case 'calendar':
-                            document.getElementById('eventTitle').focus();
-                            break;
-                    }
-                }
-            }
-        });
-
-        // Export data functionality
-        function exportFamilyData() {
-            const dataStr = JSON.stringify(familyData, null, 2);
-            const dataBlob = new Blob([dataStr], {type: 'application/json'});
-            const url = URL.createObjectURL(dataBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${familyData.name.replace(/\s+/g, '_')}_data.json`;
-            link.click();
-            URL.revokeObjectURL(url);
-        }
-
-        // Import data functionality
-        function importFamilyData(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const importedData = JSON.parse(e.target.result);
-                        if (confirm('This will replace all current data. Are you sure?')) {
-                            familyData = importedData;
-                            saveFamilyData();
-                            renderAllData();
-                            updateFamilyMembers();
-                            alert('Data imported successfully!');
-                        }
-                    } catch (error) {
-                        alert('Error importing data. Please check the file format.');
-                    }
-                };
-                reader.readAsText(file);
-            }
-        }
-
-        // Add export/import buttons to the interface
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add data management section to settings (could be expanded)
-            const settingsHTML = `
-                <div style="margin-top: 2rem; padding: 1rem; background: rgba(255,255,255,0.1); border-radius: 10px;">
-                    <h4>Data Management</h4>
-                    <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
-                        <button onclick="exportFamilyData()" class="btn-small">Export Data</button>
-                        <label class="btn-small" style="cursor: pointer; background: #51cf66;">
-                            Import Data
-                            <input type="file" accept=".json" onchange="importFamilyData(event)" style="display: none;">
-                        </label>
-                    </div>
-                </div>
-            `;
-            
-            // You can add this to any tab or create a settings tab
-        });
-
-        // PWA installation prompt
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            
-            // Show install button
-            const installBtn = document.createElement('button');
-            installBtn.textContent = '📱 Install App';
-            installBtn.className = 'invite-btn';
-            installBtn.onclick = () => {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then((choiceResult) => {
-                    if (choiceResult.outcome === 'accepted') {
-                        console.log('User accepted the install prompt');
-                    }
-                    deferredPrompt = null;
-                    installBtn.remove();
-                });
-            };
-            
-            document.querySelector('.user-info').appendChild(installBtn);
-        });
-
-        // Add manifest for PWA
-        const manifest = {
-            name: "Family Organizer",
-            short_name: "FamilyOrg",
-            description: "A collaborative family organization app",
-            start_url: "/",
-            display: "standalone",
-            background_color: "#667eea",
-            theme_color: "#667eea",
-            icons: [
-                {
-                    src: "data:image/svg+xml;base64," + btoa(`
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                            <rect width="512" height="512" fill="#667eea"/>
-                            <text x="256" y="300" font-family="Arial" font-size="300" fill="white" text-anchor="middle">👨‍👩‍👧‍👦</text>
-                        </svg>
-                    `),
-                    sizes: "512x512",
-                    type: "image/svg+xml"
-                }
-            ]
-        };
-        
-        const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
-        const manifestURL = URL.createObjectURL(manifestBlob);
-        const link = document.createElement('link');
-        link.rel = 'manifest';
-        link.href = manifestURL;
-        document.head.appendChild(link);
-    </script>
-</body>
-</html>
+            <div style="background: #f0f0f0; padding: 1rem; border-radius:
