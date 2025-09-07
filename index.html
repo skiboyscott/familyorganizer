@@ -925,31 +925,264 @@
             }
         }
 
-        // Calendar functions
-        function addCalendarEvent() {
-            const titleInput = document.getElementById('eventTitle');
-            const dateInput = document.getElementById('eventDate');
+        // Calendar functionality
+        let currentDate = new Date();
+        let selectedDateForEvent = null;
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const monthYear = document.getElementById('currentMonthYear');
             
-            const title = titleInput.value.trim();
-            const date = dateInput.value;
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
             
-            if (!title || !date) {
-                alert('Please enter both title and date');
+            monthYear.textContent = new Date(year, month).toLocaleDateString('en-US', { 
+                month: 'long', 
+                year: 'numeric' 
+            });
+            
+            // Clear the grid
+            grid.innerHTML = '';
+            
+            // Add day headers
+            const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            dayHeaders.forEach(day => {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-header-day';
+                dayElement.textContent = day;
+                grid.appendChild(dayElement);
+            });
+            
+            // Get first day of month and number of days
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const startingDayOfWeek = firstDay.getDay();
+            
+            const today = new Date();
+            const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+            const todayDate = today.getDate();
+            
+            // Add empty cells for days before the first day of the month
+            for (let i = 0; i < startingDayOfWeek; i++) {
+                const prevMonthDay = new Date(year, month, -(startingDayOfWeek - 1 - i));
+                const dayElement = createCalendarDay(prevMonthDay, true);
+                grid.appendChild(dayElement);
+            }
+            
+            // Add days of the current month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                const isToday = isCurrentMonth && day === todayDate;
+                const dayElement = createCalendarDay(date, false, isToday);
+                grid.appendChild(dayElement);
+            }
+            
+            // Fill remaining cells with next month days
+            const totalCells = grid.children.length - 7; // Subtract header row
+            const remainingCells = 42 - totalCells; // 6 rows * 7 days
+            for (let day = 1; day <= remainingCells; day++) {
+                const nextMonthDay = new Date(year, month + 1, day);
+                const dayElement = createCalendarDay(nextMonthDay, true);
+                grid.appendChild(dayElement);
+            }
+        }
+
+        function createCalendarDay(date, isOtherMonth = false, isToday = false) {
+            const dayElement = document.createElement('div');
+            dayElement.className = 'calendar-day';
+            
+            if (isOtherMonth) dayElement.classList.add('other-month');
+            if (isToday) dayElement.classList.add('today');
+            
+            const dateStr = date.toISOString().split('T')[0];
+            const dayEvents = familyData.events.filter(event => {
+                const eventDate = new Date(event.date).toISOString().split('T')[0];
+                return eventDate === dateStr;
+            });
+            
+            if (dayEvents.length > 0) {
+                dayElement.classList.add('has-events');
+            }
+            
+            dayElement.innerHTML = `
+                <div class="calendar-day-number">${date.getDate()}</div>
+                <div class="calendar-events">
+                    ${dayEvents.slice(0, 2).map(event => `
+                        <div style="font-size: 0.6rem; margin-bottom: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <span class="calendar-event-dot"></span>${event.title}
+                        </div>
+                    `).join('')}
+                    ${dayEvents.length > 2 ? `<div style="font-size: 0.6rem; color: #2E8B57;">+${dayEvents.length - 2} more</div>` : ''}
+                </div>
+            `;
+            
+            dayElement.onclick = () => openDayModal(date);
+            
+            return dayElement;
+        }
+
+        function openDayModal(date) {
+            selectedDateForEvent = date;
+            const dateStr = date.toLocaleDateString('en-US', { 
+                weekday: 'long',
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            document.getElementById('dayEventModalTitle').textContent = `Events for ${dateStr}`;
+            document.getElementById('selectedDate').value = date.toISOString().split('T')[0];
+            
+            // Clear form
+            document.getElementById('dayEventTitle').value = '';
+            document.getElementById('dayEventTime').value = '';
+            document.getElementById('dayEventDescription').value = '';
+            
+            // Show existing events for this day
+            renderDayEvents(date);
+            
+            showModal('dayEventModal');
+        }
+
+        function renderDayEvents(date) {
+            const dateStr = date.toISOString().split('T')[0];
+            const dayEvents = familyData.events.filter(event => {
+                const eventDate = new Date(event.date).toISOString().split('T')[0];
+                return eventDate === dateStr;
+            });
+            
+            const container = document.getElementById('dayEventsList');
+            if (dayEvents.length === 0) {
+                container.innerHTML = '<p style="color: #666; font-style: italic;">No events for this day</p>';
                 return;
             }
+            
+            container.innerHTML = dayEvents.map(event => {
+                const eventTime = event.time ? ` at ${event.time}` : '';
+                return `
+                    <div class="list-item" style="margin-bottom: 0.5rem;">
+                        <div>
+                            <strong>${event.title}</strong>${eventTime}
+                            ${event.description ? `<div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">${event.description}</div>` : ''}
+                            <div style="font-size: 0.7rem; color: #999;">Added by ${event.addedBy}</div>
+                        </div>
+                        <button class="btn-small btn-danger" onclick="removeDayEvent(${event.id})">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
 
+        function addDayEvent(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('dayEventTitle').value.trim();
+            const time = document.getElementById('dayEventTime').value;
+            const description = document.getElementById('dayEventDescription').value.trim();
+            const selectedDate = document.getElementById('selectedDate').value;
+            
+            if (!title) return;
+            
+            const eventDateTime = selectedDate + (time ? `T${time}` : 'T00:00');
+            
             familyData.events.push({
                 id: Date.now(),
                 title,
-                date,
+                date: eventDateTime,
+                time: time || null,
+                description: description || null,
                 addedBy: familyData.members[0]
             });
-
-            titleInput.value = '';
-            dateInput.value = '';
             
             saveFamilyData();
-            renderCalendarEvents();
+            renderCalendar();
+            renderUpcomingEvents();
+            renderDayEvents(selectedDateForEvent);
+            
+            // Clear form
+            document.getElementById('dayEventTitle').value = '';
+            document.getElementById('dayEventTime').value = '';
+            document.getElementById('dayEventDescription').value = '';
+        }
+
+        function addQuickEvent() {
+            const titleInput = document.getElementById('quickEventTitle');
+            const title = titleInput.value.trim();
+            
+            if (!title) return;
+            
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0] + 'T00:00';
+            
+            familyData.events.push({
+                id: Date.now(),
+                title,
+                date: todayStr,
+                time: null,
+                description: null,
+                addedBy: familyData.members[0]
+            });
+            
+            titleInput.value = '';
+            saveFamilyData();
+            renderCalendar();
+            renderUpcomingEvents();
+        }
+
+        function removeDayEvent(id) {
+            familyData.events = familyData.events.filter(event => event.id !== id);
+            saveFamilyData();
+            renderCalendar();
+            renderUpcomingEvents();
+            if (selectedDateForEvent) {
+                renderDayEvents(selectedDateForEvent);
+            }
+        }
+
+        function previousMonth() {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
+        }
+
+        function nextMonth() {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        }
+
+        function renderUpcomingEvents() {
+            const container = document.getElementById('upcomingEvents');
+            const now = new Date();
+            const upcoming = familyData.events
+                .filter(event => new Date(event.date) >= now)
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                .slice(0, 5);
+            
+            if (upcoming.length === 0) {
+                container.innerHTML = '<p style="color: #666; font-style: italic;">No upcoming events</p>';
+                return;
+            }
+            
+            container.innerHTML = upcoming.map(event => {
+                const eventDate = new Date(event.date);
+                const timeStr = event.time ? ` at ${event.time}` : '';
+                
+                return `
+                    <div class="list-item">
+                        <div>
+                            <strong>${event.title}</strong>
+                            <div style="font-size: 0.9rem; color: #2E8B57;">
+                                ${eventDate.toLocaleDateString()}${timeStr}
+                            </div>
+                            ${event.description ? `<div style="font-size: 0.8rem; color: #666;">${event.description}</div>` : ''}
+                            <div style="font-size: 0.7rem; color: #999;">Added by ${event.addedBy}</div>
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn-small btn-danger" onclick="removeDayEvent(${event.id})">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }CalendarEvents();
         }
 
         function renderCalendarEvents() {
